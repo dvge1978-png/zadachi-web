@@ -53,7 +53,7 @@ leaf:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',moon
 pill:'<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.5 8.5l5 7"/>',pen:'<path d="M4 20l1-5L16 4l4 4L9 19z"/>',
 music:'<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',dumb:'<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
 coffee:'<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',bed:'<path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.5"/>',
-star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
+star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',clock2:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
 };
 function I(n,cls){return '<svg class="i'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(P[n]||P.circle)+'</svg>';}
 var HICONS=['book','wave','drop','run','dumb','leaf','moon','sun','heart','pill','pen','music','coffee','bed','star','circle'];
@@ -680,8 +680,43 @@ function chips(label,opts,cur,key,hint,extra){
 function parseTime(s){s=String(s==null?'':s).trim();if(!s)return null;var h,mi,m=s.match(/^(\d{1,2})\s*[:.,\-\s]\s*(\d{1,2})$/);
   if(m){h=+m[1];mi=+m[2];}else{if(!/^\d{1,4}$/.test(s))return null;if(s.length<=2){h=+s;mi=0;}else if(s.length===3){h=+s[0];mi=+s.slice(1);}else{h=+s.slice(0,2);mi=+s.slice(2);}}
   if(!(h>=0&&h<=23&&mi>=0&&mi<=59))return null;return pad(h)+':'+pad(mi);}
-function timeField(key,val,ph){return '<span class="chip tinw"><input class="tin" data-tin="'+key+'" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="'+esc(ph||'чч:мм')+'" aria-label="'+esc(ph||'Время')+'" value="'+esc(val||'')+'"></span>';}
+function timeField(key,val,ph){var lab=val||({due_time:'Другое время',remind_add:'Добавить время',h_add:'Другое время',def_at:'Изменить время'}[key]||'Выбрать');return '<button type="button" class="chip tpbtn" data-a="tpOpen" data-v="'+key+'" data-cur="'+esc(val||'')+'">'+I('clock2')+esc(lab)+'</button>';}
 function timeChoice(label,key,cur,presets,noneLabel,hint){var list=presets.slice();if(cur&&list.indexOf(cur)<0)list.push(cur);list.sort();return chips(label,(noneLabel?[['',noneLabel]]:[]).concat(list.map(function(x){return[x,x];})),cur||'',key,hint,timeField(key,'','своё: 7:30'));}
+function applyTime(k,v){var s=UI.sheet;if(!s)return;
+  if(k==='due_time'){s.due_time=v;s.tpl=null;}
+  else if(k==='remind_add'){s.remind_at=(s.remind_at||[]).filter(function(x){return x!==v;}).concat([v]).sort();}
+  else if(k==='remind'){s.remind=v;}
+  else if(k==='h_add'){s.times=(s.times||[]).filter(function(x){return x!==v;}).concat([v]).sort();}
+  else if(k==='q_from'||k==='q_to'){SET.quiet[k==='q_from'?'from':'to']=v;saveSettings();}
+  else if(k==='h_from'||k==='h_to'){SET.hours[k==='h_from'?'from':'to']=v;saveSettings();}
+  else if(k==='def_at'){SET.def.at=v;SET.def.time='fixed';saveSettings();}
+  renderSheet();}
+/* циферблат: сначала час, сразу потом минуты */
+var TP=null;
+function tpCurrent(k){var s=UI.sheet||{};if(k==='due_time')return s.due_time;if(k==='q_from')return SET.quiet.from;if(k==='q_to')return SET.quiet.to;if(k==='h_from')return SET.hours.from;if(k==='h_to')return SET.hours.to;if(k==='def_at')return SET.def.at;return null;}
+function tpTitle(k){return {due_time:'Время задачи',remind_add:'Напомнить в',h_add:'Напоминание привычки',q_from:'Тихие часы: начало',q_to:'Тихие часы: конец',h_from:'«Каждый час»: с',h_to:'«Каждый час»: до',def_at:'Время по умолчанию'}[k]||'Время';}
+function tpOpen(k,cur){var v=cur||tpCurrent(k)||'09:00',p=v.split(':');TP={key:k,h:+p[0]||0,m:+p[1]||0,step:'h',fine:false};tpRender();}
+function tpRender(){
+  var root=document.getElementById('tp');if(!root){root=document.createElement('div');root.id='tp';document.body.appendChild(root);}
+  if(!TP){root.innerHTML='';return;}
+  var R0=112,R1=74,cx=130,cy=130,btn='';
+  function pos(i,n,r){var a=(i/n)*2*Math.PI-Math.PI/2;return 'left:'+(cx+r*Math.cos(a)-20).toFixed(1)+'px;top:'+(cy+r*Math.sin(a)-20).toFixed(1)+'px';}
+  if(TP.step==='h'){
+    for(var i=1;i<=12;i++){var h=i%12===0?12:i;btn+='<button class="tpn'+(TP.h===h?' on':'')+'" style="'+pos(i%12,12,R0)+'" data-a="tpH" data-v="'+h+'" aria-label="'+h+' часов">'+h+'</button>';}
+    for(var j=0;j<12;j++){var h2=j===0?0:j+12;btn+='<button class="tpn in'+(TP.h===h2?' on':'')+'" style="'+pos(j,12,R1)+'" data-a="tpH" data-v="'+h2+'" aria-label="'+h2+' часов">'+pad(h2)+'</button>';}
+  }else{
+    for(var k=0;k<12;k++){var mm=k*5;btn+='<button class="tpn'+(TP.m===mm?' on':'')+'" style="'+pos(k,12,R0)+'" data-a="tpM" data-v="'+mm+'" aria-label="'+mm+' минут">'+pad(mm)+'</button>';}
+  }
+  var hand=TP.step==='h'?((TP.h%12)/12*360):(TP.m/60*360),hr=TP.step==='h'&&(TP.h===0||TP.h>12)?R1:R0;
+  root.innerHTML='<div class="tpov" data-a="tpClose"><div class="tpbox" role="dialog" aria-modal="true" aria-label="'+esc(tpTitle(TP.key))+'">'
+    +'<div class="tphd">'+esc(tpTitle(TP.key))+'</div>'
+    +'<div class="tpshow"><button class="'+(TP.step==='h'?'on':'')+'" data-a="tpStep" data-v="h">'+pad(TP.h)+'</button><span>:</span><button class="'+(TP.step==='m'?'on':'')+'" data-a="tpStep" data-v="m">'+pad(TP.m)+'</button></div>'
+    +'<div class="tpdial"><div class="tphand" style="height:'+hr+'px;transform:rotate('+hand+'deg)"></div><div class="tpdot"></div>'+btn+'</div>'
+    +'<div class="tphint">'+(TP.step==='h'?'Выбери час: снаружи 1–12, внутри 13–00':'Выбери минуты — время сразу встанет')+'</div>'
+    +(TP.step==='m'?'<div class="row2"><button class="btn2" data-a="tpFine" data-v="-1">−1 мин</button><button class="btn2" data-a="tpFine" data-v="1">+1 мин</button><button class="btn2" data-a="tpOk">Готово</button></div>':'')
+    +'<div class="row2"><button class="btn2" data-a="tpClose2">Отмена</button></div></div></div>';
+}
+function tpDone(){var k=TP.key,v=pad(TP.h)+':'+pad(TP.m);TP=null;tpRender();applyTime(k,v);}
 function customChip(key,cur,presets,unit){var c=cur!==''&&cur!=null&&presets.map(String).indexOf(String(cur))<0;return '<button class="chip'+(c?' on':'')+'" data-a="custom" data-k="'+key+'" data-v="'+unit+'">'+(c?cur+' '+unit:'Своё…')+'</button>';}
 function timeChip(key,cur,presets,label){var c=cur&&presets.indexOf(cur)<0;return '<label class="chip'+(c?' on':'')+'">'+(c?cur:label||'Другое время')+'<input type="time" data-in="'+key+'" value="'+(cur||'09:00')+'" aria-label="'+(label||'Другое время')+'"></label>';}
 function colorChips(cur,key,list){var c=list.indexOf(cur)<0;return '<div class="swatches">'+list.map(function(x){return '<button class="sw'+(x===cur?' on':'')+'" style="--c:'+x+'" data-a="set" data-k="'+key+'" data-v="'+x+'" aria-label="Цвет '+x+'"></button>';}).join('')+'<label class="sw any'+(c?' on':'')+'" style="'+(c?'background:'+esc(cur):'')+'" aria-label="Свой цвет"><input type="color" data-in="'+key+'" value="'+(c?esc(cur):'#888888')+'"></label></div>';}
@@ -836,7 +871,7 @@ function bindSheet(){
   var root=document.getElementById('sheet'),s=UI.sheet;
   [['d-title','title'],['d-details','details'],['d-name','name'],['d-lname','name']].forEach(function(p){var el=root.querySelector('#'+p[0]);if(el)el.addEventListener('input',function(){s[p[1]]=el.value;});});
   var sn=root.querySelector('#s-name');if(sn)sn.addEventListener('change',function(){var v=sn.value.trim();var me=prof(ME);if(me)me.name=v;q(sb.from('profiles').update({name:v}).eq('id',ME)).then(function(){render();toast('Имя сохранено');}).catch(err);});
-  root.querySelectorAll('input[data-tin]').forEach(function(el){
+  root.querySelectorAll('input[data-tin]').forEach(function(el){if(true)return;
     var done=false;function apply(){if(done)return;var raw=el.value.trim(),k=el.getAttribute('data-tin');if(!raw)return;var v=parseTime(raw);
       if(!v){toast('Не понял время. Напиши, например, 7, 730 или 7:30');return;}done=true;
       if(k==='due_time'){s.due_time=v;s.tpl=null;}
@@ -1026,6 +1061,14 @@ var A={
     if(a.length<8){e.textContent='Нужно минимум 8 символов';return;}if(a!==b){e.textContent='Пароли не совпадают';return;}
     el.disabled=true;try{await q(sb.auth.updateUser({password:a}));closeSheet();toast('Пароль изменён');}catch(x){e.textContent=/same/i.test(x.message)?'Новый пароль совпадает со старым':x.message;el.disabled=false;}},
   mic:function(v){startVoice(v);},
+  tpOpen:function(v,id,el){tpOpen(v,el.getAttribute('data-cur'));},
+  tpH:function(v){TP.h=+v;TP.step='m';tpRender();},
+  tpM:function(v){TP.m=+v;tpDone();},
+  tpStep:function(v){TP.step=v;tpRender();},
+  tpFine:function(v){var t=(TP.h*60+TP.m+(+v)+1440)%1440;TP.h=Math.floor(t/60);TP.m=t%60;tpRender();},
+  tpOk:function(){tpDone();},
+  tpClose:function(v,id,el,e){if(e.target===el){TP=null;tpRender();}},
+  tpClose2:function(){TP=null;tpRender();},
   htime:function(v){var a=UI.sheet.times=UI.sheet.times||[],i=a.indexOf(v);if(i>=0)a.splice(i,1);else a.push(v);a.sort();renderSheet();},
   asOn:function(){SET.assistant=true;saveSettings();render();},
   asClear:function(){if(!confirm('Очистить переписку с помощником?'))return;AS.msgs=[];asSave();render();},
@@ -1080,7 +1123,7 @@ document.addEventListener('click',function(e){
   if(lpFired&&(a==='habTap'||a==='open'||a==='chk')){lpFired=false;return;}
   if(A[a]){if(el.tagName==='BUTTON'&&el.type==='submit')e.preventDefault();A[a](el.getAttribute('data-v'),el.getAttribute('data-id'),el,e);}
 });
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(UI.sheet)userClose();else if(UI.noteId)closeNote();else if(UI.sel){UI.sel=null;render();}}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(TP){TP=null;tpRender();}else if(UI.sheet)userClose();else if(UI.noteId)closeNote();else if(UI.sel){UI.sel=null;render();}}});
 
 /* =================== Запуск =================== */
 var starting=false;
