@@ -2,6 +2,7 @@
 'use strict';
 /* =================== Подключение =================== */
 var SUPA_URL='https://rmmmyaozvtknmypavyso.supabase.co';
+var FN_NAME='hyper-function';
 var SUPA_KEY='sb_publishable_wbMmm1XAfMY5Ckr1zHwt0Q_VTvyHrUz';
 var HASH=location.hash||'';
 var FROM_INVITE=/type=invite/.test(HASH)||/type=signup/.test(HASH);
@@ -51,7 +52,7 @@ leaf:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',moon
 pill:'<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.5 8.5l5 7"/>',pen:'<path d="M4 20l1-5L16 4l4 4L9 19z"/>',
 music:'<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',dumb:'<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
 coffee:'<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',bed:'<path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.5"/>',
-star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>'
+star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
 };
 function I(n,cls){return '<svg class="i'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(P[n]||P.circle)+'</svg>';}
 var HICONS=['book','wave','drop','run','dumb','leaf','moon','sun','heart','pill','pen','music','coffee','bed','star','circle'];
@@ -62,7 +63,7 @@ var LCOLORS=['#8C8A84','#5F7FB8','#C98B5B','#7C9C83','#9B86C4','#C46A6A'];
 var ME=null;
 var D={nmembers:[],profiles:[],lists:[],members:[],tasks:[],log:[],habits:[],marks:{},notes:[],templates:[],comments:{}};
 var UI={view:'tasks',filter:'all',cal:'day',calDay:T(),sel:null,q:'',noteId:null,sheet:null,quick:''};
-var SET_DEF={theme:'light',accent:'#141414',layout:'auto',autoMove:true,quiet:{from:'23:00',to:'08:00'},hours:{from:'09:00',to:'21:00'},rewards:true};
+var SET_DEF={theme:'light',accent:'#141414',layout:'auto',autoMove:true,quiet:{from:'23:00',to:'08:00'},hours:{from:'09:00',to:'21:00'},rewards:true,assistant:false};
 var SET=JSON.parse(JSON.stringify(SET_DEF));
 function prof(id){return D.profiles.filter(function(p){return p.id===id;})[0];}
 function pname(id){var p=prof(id);return p?(p.name||p.email.split('@')[0]):'?';}
@@ -430,11 +431,65 @@ function notesList(){
   return h;
 }
 
+/* помощник */
+var AS={msgs:[],busy:false,loaded:null};
+function asKey(){return 'zadachi-assistant-'+ME;}
+function asLoad(){if(AS.loaded===ME)return;AS.loaded=ME;try{AS.msgs=JSON.parse(localStorage.getItem(asKey())||'[]');}catch(e){AS.msgs=[];}}
+function asSave(){try{localStorage.setItem(asKey(),JSON.stringify(AS.msgs.slice(-40)));}catch(e){}}
+function nl(s){return esc(s).replace(/\n/g,'<br>');}
+function assistantView(){
+  asLoad();
+  var h='<div class="top"><div><div class="date">'+fmtLong(T())+'</div><h1 class="dh">Помощник</h1></div>'+(SET.assistant&&AS.msgs.length?'<button class="btn2" data-a="asClear">Очистить</button>':'')+'</div>';
+  if(!SET.assistant){
+    return h+'<div class="fields" style="margin-top:18px;padding:18px;display:flex;flex-direction:column;gap:12px"><div style="font-size:16px;line-height:1.5">Помощник на основе Claude смотрит твои задачи, привычки и заметки, составляет план на день, находит в заметках дела и предлагает задачи со сроками. Сам он ничего не меняет: каждую задачу и перенос ты подтверждаешь.</div><div class="muted" style="font-size:14px;line-height:1.5">Когда ты пользуешься помощником, эти данные отправляются в Claude (Anthropic) для обработки. Выключить можно в любой момент в настройках.</div><button class="btn" data-a="asOn">'+I('spark')+'Включить помощника</button></div>';
+  }
+  h+='<div class="chipsrow"><button class="fchip" data-a="asPlan"'+(AS.busy?' disabled':'')+'>'+I('sun')+'План на сегодня</button><button class="fchip" data-a="asNotes"'+(AS.busy?' disabled':'')+'>'+I('note')+'Разобрать заметки</button></div>';
+  h+='<div class="chat" id="chat">';
+  if(!AS.msgs.length)h+='<div class="empty">Спроси что угодно: «что у меня сегодня?», «разложи эти дела по неделе: …», «что я давно откладываю?». Или нажми «План на сегодня».</div>';
+  AS.msgs.forEach(function(m,mi){
+    if(m.role==='user'){h+='<div class="m u">'+nl(m.content)+'</div>';return;}
+    if(m.error){h+='<div class="m a err">'+nl(m.content)+'</div>';return;}
+    h+='<div class="m a">'+nl(m.content);
+    (m.questions||[]).forEach(function(q2){h+='<div class="q">'+I('msg')+'<span>'+esc(q2)+'</span></div>';});
+    var open=(m.tasks||[]).filter(function(t){return !t._added;}).length;
+    (m.tasks||[]).forEach(function(t,ti){
+      var when=t.due_date?dayWord(t.due_date)+(t.due_time?' в '+t.due_time:''):'без срока';
+      h+='<div class="prop"><div style="flex:1;min-width:0"><b>'+esc(t.title)+'</b><div class="meta"><span>'+esc(when)+'</span>'+(t.list?'<span>'+esc(t.list)+'</span>':'')+(t.recur&&t.recur!=='none'?'<span>'+I('repeat')+esc(recurText({recur:t.recur,recur_n:2,recur_days:[]}))+'</span>':'')+'</div></div>'+(t._added?'<span class="badge">добавлено</span>':'<button class="btn2" data-a="asAdd" data-v="'+mi+':'+ti+'">'+I('plus')+'Добавить</button>')+'</div>';
+    });
+    (m.moves||[]).forEach(function(mv,vi){var tk=findTask(mv.task_id);if(!tk)return;
+      h+='<div class="prop"><div style="flex:1;min-width:0"><b>'+esc(tk.title)+'</b><div class="meta"><span>'+I('move')+(mv.due_date?'на '+dayWord(mv.due_date).toLowerCase():'без срока')+'</span>'+(mv.reason?'<span>'+esc(mv.reason)+'</span>':'')+'</div></div>'+(mv._done?'<span class="badge">перенесено</span>':'<button class="btn2" data-a="asMove" data-v="'+mi+':'+vi+'">Перенести</button>')+'</div>';});
+    if(open>1)h+='<button class="btn2" style="margin-top:8px" data-a="asAddAll" data-v="'+mi+'">Добавить все ('+open+')</button>';
+    h+='</div>';
+  });
+  if(AS.busy)h+='<div class="m a muted">Думаю…</div>';
+  h+='</div><form class="composer" id="asform" autocomplete="off"><textarea id="asin" rows="1" placeholder="Напиши помощнику" aria-label="Сообщение помощнику"></textarea><button class="btn" aria-label="Отправить"'+(AS.busy?' disabled':'')+'>'+I('send')+'</button></form>';
+  return h;
+}
+async function askAssistant(mode,label,noteId){
+  if(AS.busy)return;asLoad();
+  var history=AS.msgs.filter(function(m){return !m.error;}).map(function(m){var c=m.content;if(m.role==='assistant'&&m.tasks&&m.tasks.length)c+='\n(предложено: '+m.tasks.map(function(t){return t.title;}).join('; ')+')';return{role:m.role,content:c};});
+  AS.msgs.push({role:'user',content:label});
+  if(mode==='chat')history.push({role:'user',content:label});
+  AS.busy=true;asSave();UI.view='assistant';render();asScroll();
+  try{
+    var r=await sb.functions.invoke(FN_NAME,{body:{mode:mode,messages:history.slice(-12),today:T(),now:fmtLong(T())+', '+nowHM(),note_id:noteId||null}});
+    if(r.error){var msg=r.error.message;try{var j=await r.error.context.json();if(j&&j.error)msg=j.error;}catch(x){}throw new Error(msg);}
+    var a=r.data||{};AS.msgs.push({role:'assistant',content:a.reply||'Готово.',tasks:a.tasks||[],moves:a.moves||[],questions:a.questions||[]});
+  }catch(e){AS.msgs.push({role:'assistant',error:true,content:'Не получилось: '+(e.message||'ошибка связи')+(/Failed to send|fetch/i.test(e.message||'')?'. Проверь, что функция помощника (hyper-function) опубликована в Supabase.':'')});}
+  AS.busy=false;asSave();render();asScroll();
+}
+function asScroll(){setTimeout(function(){var c=document.getElementById('asform');if(c&&c.scrollIntoView)c.scrollIntoView({block:'end'});},30);}
+function listIdByName(n){if(!n)return null;var l=D.lists.filter(function(x){return x.name.toLowerCase()===String(n).toLowerCase();})[0];return l?l.id:null;}
+async function asAddTask(mi,ti){var m=AS.msgs[mi],t=m&&m.tasks[ti];if(!t||t._added)return;
+  var ok=/^\d{4}-\d{2}-\d{2}$/.test(t.due_date||''),tm=/^\d{2}:\d{2}$/.test(t.due_time||'');
+  var r=await createTask({title:String(t.title).slice(0,200),details:t.details||'',due_date:ok?t.due_date:null,due_time:ok&&tm?t.due_time:null,remind_every:ok&&tm?10:0,remind_times:ok&&tm?3:0,list_id:listIdByName(t.list),prio:Math.max(0,Math.min(3,+t.prio||0)),recur:ok&&t.recur&&RECUR.some(function(x){return x[0]===t.recur;})&&t.recur!=='days'?t.recur:'none'});
+  if(r){t._added=true;asSave();render();}return r;}
+
 /* каркас */
 function sidebar(){
   var nav=function(v,icn,t,n){return '<button class="'+(UI.view===v&&(v!=='tasks'||UI.filter==='all')?'on':'')+'" data-a="go" data-v="'+v+'">'+I(icn)+'<span class="l">'+t+'</span>'+(n?'<span class="n">'+n+'</span>':'')+'</button>';};
   var todayN=myTasks().filter(function(t){return !t.done&&!hiddenTask(t)&&groupOf(t)==='today';}).length;
-  var h='<div class="logo" style="padding:0 12px"><b>'+I('check')+'</b>задачи</div><div class="nav">'+nav('tasks','sun','Задачи',todayN||'')+nav('inbox','inbox','Входящие',inbox().length||'')+nav('calendar','cal','Календарь')+nav('habits','drop','Привычки')+nav('diary','book','Дневник')+nav('notes','note','Заметки')+'</div>';
+  var h='<div class="logo" style="padding:0 12px"><b>'+I('check')+'</b>задачи</div><div class="nav">'+nav('tasks','sun','Задачи',todayN||'')+nav('inbox','inbox','Входящие',inbox().length||'')+nav('calendar','cal','Календарь')+nav('habits','drop','Привычки')+nav('diary','book','Дневник')+nav('notes','note','Заметки')+nav('assistant','spark','Помощник')+'</div>';
   var own=D.lists.filter(function(l){return !isShared(l);}),sh=D.lists.filter(isShared);
   var li=function(l){var n=myTasks().filter(function(t){return t.list_id===l.id&&!t.done;}).length;return '<button class="'+(UI.view==='tasks'&&UI.filter===l.id?'on':'')+'" data-a="filter" data-v="'+l.id+'"><i class="dot" style="--c:'+esc(l.color)+'"></i><span class="l">'+esc(l.name)+'</span><span class="n">'+(l.hidden?I('eyeoff'):'')+(n||'')+'</span></button>';};
   h+='<div class="nav"><div class="t">Списки</div>'+own.map(li).join('')+'<button data-a="listNew">'+I('plus')+'<span class="l">Новый список</span></button></div>';
@@ -445,7 +500,7 @@ function sidebar(){
 function bottomNav(){
   var b=function(v,icn,t,extra){return '<button class="'+(UI.view===v?'on':'')+'" data-a="go" data-v="'+v+'" aria-current="'+(UI.view===v?'page':'false')+'"><span class="cnt">'+I(icn)+(extra||'')+'</span>'+t+'</button>';};
   var n=inbox().length;
-  return '<nav class="bnav"><div class="in">'+b('tasks','tasks','Задачи')+b('calendar','cal','Календарь')+b('notes','note','Заметки')+b('more','menu','Ещё',n?'<em>'+n+'</em>':'')+'</div></nav>';
+  return '<nav class="bnav"><div class="in">'+b('tasks','tasks','Задачи')+b('calendar','cal','Календарь')+b('assistant','spark','Помощник')+b('notes','note','Заметки')+b('more','menu','Ещё',n?'<em>'+n+'</em>':'')+'</div></nav>';
 }
 function moreView(){
   var n=inbox().length;
@@ -453,7 +508,7 @@ function moreView(){
   return '<div class="top"><div><div class="date">'+fmtLong(T())+'</div><h1 class="dh">Ещё</h1></div></div><div class="fields" style="margin-top:18px">'+r('inbox','inbox','Входящие',n?'<span class="badge">'+n+'</span>':'')+r('habits','drop','Привычки')+r('diary','book','Дневник')+'<button class="lrow" data-a="lists">'+I('list')+'<b>Списки</b>'+I('right')+'</button><button class="lrow" data-a="settings">'+I('gear')+'<b>Настройки</b>'+I('right')+'</button></div>';
 }
 function mainContent(){
-  switch(UI.view){case'inbox':return inboxView();case'calendar':return calView();case'diary':return diaryView();case'habits':return habitsView();case'notes':return notesView();case'more':return moreView();default:return tasksView();}
+  switch(UI.view){case'inbox':return inboxView();case'calendar':return calView();case'diary':return diaryView();case'habits':return habitsView();case'notes':return notesView();case'more':return moreView();case'assistant':return assistantView();default:return tasksView();}
 }
 function render(){
   if(!ME)return;
@@ -476,6 +531,8 @@ function bindMain(){
   if(f){var qi=document.getElementById('qin');qi.addEventListener('input',function(){UI.quick=qi.value;});
     f.addEventListener('submit',async function(e){e.preventDefault();var v=qi.value.trim();if(!v)return;var p=parseQuick(v);if(!p.title){toast('Напиши, что нужно сделать');return;}
       if(UI.filter!=='all')p.list_id=UI.filter;UI.quick='';qi.value='';var r=await createTask(p);if(r)toast('Добавлено: '+r.title+(r.due_date?', '+dayWord(r.due_date).toLowerCase()+(r.due_time?' в '+r.due_time:''):''));});}
+  var af=document.getElementById('asform');if(af){var ai=document.getElementById('asin');ai.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();af.requestSubmit?af.requestSubmit():af.dispatchEvent(new Event('submit',{cancelable:true}));}});ai.addEventListener('input',function(){ai.style.height='auto';ai.style.height=Math.min(ai.scrollHeight,160)+'px';});
+    af.addEventListener('submit',function(e){e.preventDefault();var v=ai.value.trim();if(!v||AS.busy)return;ai.value='';askAssistant('chat',v);});}
   var nq=document.getElementById('nq');if(nq)nq.addEventListener('input',function(){UI.q=nq.value;document.getElementById('nlist').innerHTML=notesList();});
 }
 
@@ -587,6 +644,7 @@ function settingsForm(){
   h+='<div><div class="gl">Акцентный цвет</div>'+colorChips(SET.accent,'s_accent',['#141414','#6A5FE0','#3F7D5C','#C0663B','#4A6FB0','#B0476E','#F2B79E'])+'</div>';
   h+=chips('Вид',[['auto','Авто'],['pc','Для ПК'],['phone','Для телефона']],SET.layout,'s_layout','«Авто» выбирает сам по ширине экрана');
   h+=chips('Незавершённые задачи',[['1','Переносить на сегодня'],['0','Оставлять в «Просрочено»']],SET.autoMove?'1':'0','s_autoMove');
+  h+=chips('Помощник Claude',[['1','Включён'],['0','Выключен']],SET.assistant?'1':'0','s_assistant','Когда пользуешься помощником, твои задачи, привычки и заметки отправляются в Claude (Anthropic) для обработки.');
   h+=chips('Поздравления и анимации',[['1','Включены'],['0','Выключены']],SET.rewards?'1':'0','s_rewards');
   h+='<div><div class="gl">Тихие часы (повторы напоминаний не приходят)</div><div class="chips">'+timeChip('q_from',SET.quiet.from,[],'с').replace('>'+SET.quiet.from+'<','>с '+SET.quiet.from+'<')+timeChip('q_to',SET.quiet.to,[],'до').replace('>'+SET.quiet.to+'<','>до '+SET.quiet.to+'<')+'</div></div>';
   h+='<div><div class="gl">Задачи «каждый час»</div><div class="chips">'+timeChip('h_from',SET.hours.from,[],'с').replace('>'+SET.hours.from+'<','>с '+SET.hours.from+'<')+timeChip('h_to',SET.hours.to,[],'до').replace('>'+SET.hours.to+'<','>до '+SET.hours.to+'<')+'</div></div>';
@@ -691,7 +749,7 @@ var A={
   },
   set:function(v,id,el){
     var k=el.getAttribute('data-k'),s=UI.sheet,t=T();
-    if(k.indexOf('s_')===0){var sk=k.slice(2);if(sk==='autoMove'||sk==='rewards')SET[sk]=v==='1';else SET[sk]=v;saveSettings();render();return;}
+    if(k.indexOf('s_')===0){var sk=k.slice(2);if(sk==='autoMove'||sk==='rewards'||sk==='assistant')SET[sk]=v==='1';else SET[sk]=v;saveSettings();render();return;}
     if(k==='tpl')applyTpl(s,v);
     else if(k==='datekey'){s.tpl=null;s.due_date=v==='today'?t:v==='tomorrow'?addDays(t,1):null;}
     else if(k==='move'){moveTask(s.id,v==='none'?null:addDays(t,+v));return;}
@@ -786,6 +844,14 @@ var A={
   passSave:async function(v,id,el){var a=document.getElementById('p1').value,b=document.getElementById('p2').value,e=document.getElementById('perr');
     if(a.length<8){e.textContent='Нужно минимум 8 символов';return;}if(a!==b){e.textContent='Пароли не совпадают';return;}
     el.disabled=true;try{await q(sb.auth.updateUser({password:a}));closeSheet();toast('Пароль изменён');}catch(x){e.textContent=/same/i.test(x.message)?'Новый пароль совпадает со старым':x.message;el.disabled=false;}},
+  asOn:function(){SET.assistant=true;saveSettings();render();},
+  asClear:function(){if(!confirm('Очистить переписку с помощником?'))return;AS.msgs=[];asSave();render();},
+  asPlan:function(){askAssistant('plan','План на сегодня');},
+  asNotes:function(){askAssistant('notes','Разобрать заметки');},
+  asAdd:async function(v){var p=v.split(':');var r=await asAddTask(+p[0],+p[1]);if(r)toast('Добавлено: '+r.title);},
+  asAddAll:async function(v){var m=AS.msgs[+v],n=0;for(var i=0;i<m.tasks.length;i++){if(!m.tasks[i]._added&&await asAddTask(+v,i))n++;}toast('Добавлено задач: '+n);},
+  asMove:async function(v){var p=v.split(':'),mv=AS.msgs[+p[0]].moves[+p[1]];var f={due_date:/^\d{4}-\d{2}-\d{2}$/.test(mv.due_date||'')?mv.due_date:null};if(!f.due_date){f.due_time=null;f.recur='none';}await patchTask(mv.task_id,f);mv._done=true;asSave();render();toast('Перенесено');},
+  noteAsk:function(){var n=findNote(UI.noteId);if(!n)return;if(!SET.assistant){closeNote();UI.view='assistant';render();return;}saveNote(n);closeNote();askAssistant('notes','Разобрать заметку «'+(n.title||'без названия')+'»',n.id);},
   settings:function(){UI.sheet={type:'settings'};renderSheet(true);},
   logout:async function(){if(!confirm('Выйти из аккаунта на этом устройстве?'))return;closeSheet();await sb.auth.signOut();location.reload();}
 };
@@ -797,7 +863,7 @@ function renderNote(){
   var root=document.getElementById('note'),n=UI.noteId&&findNote(UI.noteId);
   if(!n){root.innerHTML='';return;}
   var mine=n.owner===ME,nm=noteMembers(n.id),info=[];if(n.daily)info.push('Заметка дня');if(!mine)info.push('от '+pname(n.owner)+', общая');else if(nm.length)info.push('общая с '+nm.map(pname).join(', '));
-  root.innerHTML='<div class="editor"><div class="bar"><button class="iconbtn" data-a="noteBack" aria-label="Назад">'+I('left')+'</button><span class="sp"></span>'+(mine&&others().length?'<button class="btn2" data-a="noteShare">'+I('users')+'Поделиться</button>':'')+'<button class="btn2" data-a="noteTask">'+I('tasks')+'Сделать задачей</button><button class="iconbtn" data-a="noteDel" aria-label="'+(mine?'Удалить заметку':'Убрать у себя')+'">'+I(mine?'trash':'out')+'</button></div><div class="body">'+(info.length?'<div class="muted" style="font-size:13px">'+esc(info.join(' · '))+'</div>':'')+'<input id="nt" placeholder="Название" aria-label="Название заметки" value="'+esc(n.title)+'"><textarea id="nb" placeholder="Текст заметки" aria-label="Текст заметки">'+esc(n.body)+'</textarea></div></div>';
+  root.innerHTML='<div class="editor"><div class="bar"><button class="iconbtn" data-a="noteBack" aria-label="Назад">'+I('left')+'</button><span class="sp"></span>'+(mine&&others().length?'<button class="btn2" data-a="noteShare">'+I('users')+'Поделиться</button>':'')+'<button class="btn2" data-a="noteAsk">'+I('spark')+'Разобрать</button><button class="btn2" data-a="noteTask">'+I('tasks')+'Задача</button><button class="iconbtn" data-a="noteDel" aria-label="'+(mine?'Удалить заметку':'Убрать у себя')+'">'+I(mine?'trash':'out')+'</button></div><div class="body">'+(info.length?'<div class="muted" style="font-size:13px">'+esc(info.join(' · '))+'</div>':'')+'<input id="nt" placeholder="Название" aria-label="Название заметки" value="'+esc(n.title)+'"><textarea id="nb" placeholder="Текст заметки" aria-label="Текст заметки">'+esc(n.body)+'</textarea></div></div>';
   var ti=root.querySelector('#nt'),bo=root.querySelector('#nb');
   function upd(){n.title=ti.value;n.body=bo.value;n.updated_at=new Date().toISOString();clearTimeout(noteTimer);noteTimer=setTimeout(function(){saveNote(n);},600);}
   ti.addEventListener('input',upd);bo.addEventListener('input',upd);

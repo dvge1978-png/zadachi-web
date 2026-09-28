@@ -279,3 +279,21 @@ body.pc .dh{font-size:46px}
 .me .nm{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:420px){.dh{font-size:34px}.sec h2{font-size:24px}.wcols{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== Помощник ===== */
+.bnav .in{grid-template-columns:repeat(5,1fr)}
+.chat{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.chat .m{max-width:88%;padding:12px 14px;border-radius:16px;line-height:1.5;font-size:15px;word-break:break-word}
+.chat .m.u{margin-left:auto;background:var(--ink);color:var(--bg);border-bottom-right-radius:6px}
+.chat .m.a{background:var(--surf);border:1px solid var(--line);border-bottom-left-radius:6px;max-width:100%}
+.chat .m.err{color:var(--warn)}
+.chat .q{display:flex;gap:8px;align-items:flex-start;margin-top:10px;color:var(--ink);font-weight:500}
+.chat .q svg.i{width:18px;height:18px;margin-top:2px}
+.prop{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;background:var(--bg)}
+.prop b{font-weight:600;display:block}
+.prop .btn2{height:38px;flex-shrink:0}
+.composer{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:flex-end;margin-top:16px;padding:8px;border:1px solid var(--line);border-radius:16px;background:var(--surf)}
+body.pc .composer{bottom:16px}
+.composer textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font-size:15px;line-height:1.45;padding:8px 6px;max-height:160px}
+.composer .btn{height:42px;width:42px;padding:0;border-radius:12px;flex-shrink:0}
+.fchip[disabled]{opacity:.5}
