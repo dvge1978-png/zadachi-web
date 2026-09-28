@@ -53,7 +53,7 @@ leaf:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',moon
 pill:'<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.5 8.5l5 7"/>',pen:'<path d="M4 20l1-5L16 4l4 4L9 19z"/>',
 music:'<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',dumb:'<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
 coffee:'<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',bed:'<path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.5"/>',
-star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
+star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
 };
 function I(n,cls){return '<svg class="i'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(P[n]||P.circle)+'</svg>';}
 var HICONS=['book','wave','drop','run','dumb','leaf','moon','sun','heart','pill','pen','music','coffee','bed','star','circle'];
@@ -266,9 +266,13 @@ function parseQuick(s){
   Object.keys(words).sort(function(a,b){return b.length-a.length;}).forEach(function(w){var re=new RegExp('(^|\\s)'+w+'(?=\\s|$)','i');if(re.test(t)){date=addDays(T(),words[w]);t=t.replace(re,' ');}});
   var days=['понедельник','вторник','сред[ау]','четверг','пятниц[ау]','суббот[ау]','воскресенье'];
   days.forEach(function(w,i){var re=new RegExp('(^|\\s)(в|во)?\\s?'+w+'(?=\\s|$)','i');if(!date&&re.test(t)){var d=T(),g=0;do{d=addDays(d,1);}while(dow(d)!==i&&g++<8);date=d;t=t.replace(re,' ');}});
-  m=t.match(/(^|\s)(в|к|до)?\s?([01]?\d|2[0-3])[:.]([0-5]\d)(?=\s|$)/i);
+  var NUMW={'час':1,'один':1,'одиннадцать':11,'два':2,'двенадцать':12,'три':3,'четыре':4,'пять':5,'шесть':6,'семь':7,'восемь':8,'девять':9,'десять':10};
+  t=t.replace(/(^|\s)(одиннадцать|двенадцать|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять)(?=\s+(утра|дня|вечера|ночи|часов|часа)(\s|$))/gi,function(x,p,w){return p+NUMW[w.toLowerCase()];});
+  m=t.match(/(^|\s)(в|к|до)?\s?(\d{1,2})(?:[:.](\d{2}))?\s+(утра|дня|вечера|ночи)(?=\s|$)/i);
+  if(m){var hh=+m[3],mm=m[4]?+m[4]:0,part=m[5].toLowerCase();if((part==='вечера'||part==='дня')&&hh<12)hh+=12;if(part==='ночи'&&hh===12)hh=0;if(hh<24&&mm<60){time=pad(hh)+':'+pad(mm);t=t.replace(m[0],' ');}}
+  if(!time)m=t.match(/(^|\s)(в|к|до)?\s?([01]?\d|2[0-3])[:.]([0-5]\d)(?=\s|$)/i);else m=null;
   if(m){time=pad(+m[3])+':'+m[4];t=t.replace(m[0],' ');}
-  else{m=t.match(/(^|\s)(в|к|до)\s([01]?\d|2[0-3])(?=\s|$)/i);if(m){time=pad(+m[3])+':00';t=t.replace(m[0],' ');}}
+  else if(!time){m=t.match(/(^|\s)(в|к|до)\s([01]?\d|2[0-3])(?=\s|$)/i);if(m){time=pad(+m[3])+':00';t=t.replace(m[0],' ');}}
   if(time&&!date)date=time>nowHM()?T():addDays(T(),1);
   t=t.replace(/\s+/g,' ').trim();
   return{title:cap(t),due_date:date,due_time:time,remind_every:time?+SET.def.every||0:0,remind_times:time?+SET.def.times||0:0,recur:rec||'none',rule:rule||{}};
@@ -416,7 +420,7 @@ function tasksView(){
   var groups={};ts.forEach(function(t){var g=groupOf(t);if(g)(groups[g]=groups[g]||[]).push(t);});
   var todays=groups.today||[],openN=todays.filter(function(t){return !t.done;}).length;
   var out='<div class="top"><div><div class="date">'+fmtLong(T())+'</div><h1 class="dh">'+(fl?esc(fl.name):'Задачи')+'</h1></div>'+(isPC()?'':'<button class="iconbtn" data-a="settings" aria-label="Настройки">'+I('gear')+'</button>')+'</div>';
-  out+='<form class="quick" id="quick" autocomplete="off"><span class="muted">'+I('plus')+'</span><input id="qin" placeholder="Новая задача, например «завтра в 19:00 купить хлеб»" aria-label="Быстро добавить задачу" value="'+esc(UI.quick)+'"><button class="iconbtn" type="button" data-a="add" aria-label="Подробнее">'+I('edit')+'</button></form>';
+  out+='<form class="quick" id="quick" autocomplete="off"><span class="muted">'+I('plus')+'</span><input id="qin" placeholder="Новая задача, например «завтра в 19:00 купить хлеб»" aria-label="Быстро добавить задачу" value="'+esc(UI.quick)+'">'+micBtn('q')+'<button class="iconbtn" type="button" data-a="add" aria-label="Подробнее">'+I('edit')+'</button></form>';
   if(!fl)out+=habitsRow();
   out+=filterChips();
   var names={overdue:'Просрочено',tomorrow:'Завтра',week:'На неделе',later:'Потом',nodate:fl&&fl.hidden?'В списке':'Без срока'};
@@ -513,6 +517,25 @@ function notesList(){
   return h;
 }
 
+/* голосовой ввод */
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var VOICE={on:false,rec:null,target:null};
+function micBtn(target){if(!SR)return '';var on=VOICE.on&&VOICE.target===target;return '<button type="button" class="iconbtn mic'+(on?' rec':'')+'" data-a="mic" data-v="'+target+'" aria-label="'+(on?'Остановить запись':'Сказать голосом')+'" aria-pressed="'+on+'">'+I('mic')+'</button>';}
+function startVoice(target){
+  if(VOICE.on){try{VOICE.rec.stop();}catch(e){}return;}
+  var r;try{r=new SR();}catch(e){toast('Голосовой ввод не поддерживается в этом браузере');return;}
+  r.lang='ru-RU';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+  var text='';
+  r.onresult=function(e){var t='';for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;text=t;var el=document.getElementById(target==='as'?'asin':'qin');if(el)el.value=t;if(target==='q')UI.quick=t;};
+  r.onerror=function(e){if(e.error==='not-allowed'||e.error==='service-not-allowed')toast('Разреши доступ к микрофону для этого сайта');else if(e.error!=='no-speech'&&e.error!=='aborted')toast('Не получилось распознать речь');};
+  r.onend=function(){VOICE.on=false;VOICE.rec=null;var t=text.trim();if(target==='q')UI.quick='';render();if(!t)return;
+    if(target==='as'||SET.assistant){askAssistant('chat',target==='q'?'Создай задачу: '+t:t,null,{autoAdd:true});}
+    else{var qi=document.getElementById('qin'),f=document.getElementById('quick');if(qi&&f){qi.value=t;UI.quick=t;f.dispatchEvent(new Event('submit',{cancelable:true}));}}};
+  VOICE.on=true;VOICE.target=target;VOICE.rec=r;
+  try{r.start();}catch(e){VOICE.on=false;toast('Не удалось включить микрофон');}
+  render();
+}
+
 /* помощник */
 var AS={msgs:[],busy:false,loaded:null};
 function asKey(){return 'zadachi-assistant-'+ME;}
@@ -544,10 +567,10 @@ function assistantView(){
     h+='</div>';
   });
   if(AS.busy)h+='<div class="m a muted">Думаю…</div>';
-  h+='</div><form class="composer" id="asform" autocomplete="off"><textarea id="asin" rows="1" placeholder="Напиши помощнику" aria-label="Сообщение помощнику"></textarea><button class="btn" aria-label="Отправить"'+(AS.busy?' disabled':'')+'>'+I('send')+'</button></form>';
+  h+='</div><form class="composer" id="asform" autocomplete="off"><textarea id="asin" rows="1" placeholder="'+(SR?'Напиши или скажи помощнику':'Напиши помощнику')+'" aria-label="Сообщение помощнику"></textarea>'+micBtn('as')+'<button class="btn" aria-label="Отправить"'+(AS.busy?' disabled':'')+'>'+I('send')+'</button></form>';
   return h;
 }
-async function askAssistant(mode,label,noteId){
+async function askAssistant(mode,label,noteId,opts){
   if(AS.busy)return;asLoad();
   var history=AS.msgs.filter(function(m){return !m.error;}).map(function(m){var c=m.content;if(m.role==='assistant'&&m.tasks&&m.tasks.length)c+='\n(предложено: '+m.tasks.map(function(t){return t.title;}).join('; ')+')';return{role:m.role,content:c};});
   AS.msgs.push({role:'user',content:label});
@@ -557,8 +580,10 @@ async function askAssistant(mode,label,noteId){
     var r=await sb.functions.invoke(FN_NAME,{body:{mode:mode,messages:history.slice(-12),today:T(),now:fmtLong(T())+', '+nowHM(),note_id:noteId||null}});
     if(r.error){var msg=r.error.message;try{var j=await r.error.context.json();if(j&&j.error)msg=j.error;}catch(x){}throw new Error(msg);}
     var a=r.data||{};AS.msgs.push({role:'assistant',content:a.reply||'Готово.',tasks:a.tasks||[],moves:a.moves||[],questions:a.questions||[]});
+    var auto=opts&&opts.autoAdd&&(a.tasks||[]).length&&!(a.questions||[]).length&&a.tasks.length<=5;
   }catch(e){AS.msgs.push({role:'assistant',error:true,content:'Не получилось: '+(e.message||'ошибка связи')+(/Failed to send|fetch/i.test(e.message||'')?'. Проверь, что функция помощника (hyper-function) опубликована в Supabase.':'')});}
   AS.busy=false;asSave();render();asScroll();
+  if(typeof auto!=='undefined'&&auto){var mi=AS.msgs.length-1,n=0;for(var i=0;i<AS.msgs[mi].tasks.length;i++){if(await asAddTask(mi,i))n++;}if(n)toast(n===1?'Задача добавлена: '+AS.msgs[mi].tasks[0].title:'Добавлено задач: '+n);}
 }
 function asScroll(){setTimeout(function(){var c=document.getElementById('asform');if(c&&c.scrollIntoView)c.scrollIntoView({block:'end'});},30);}
 function listIdByName(n){if(!n)return null;var l=D.lists.filter(function(x){return x.name.toLowerCase()===String(n).toLowerCase();})[0];return l?l.id:null;}
@@ -995,6 +1020,7 @@ var A={
   passSave:async function(v,id,el){var a=document.getElementById('p1').value,b=document.getElementById('p2').value,e=document.getElementById('perr');
     if(a.length<8){e.textContent='Нужно минимум 8 символов';return;}if(a!==b){e.textContent='Пароли не совпадают';return;}
     el.disabled=true;try{await q(sb.auth.updateUser({password:a}));closeSheet();toast('Пароль изменён');}catch(x){e.textContent=/same/i.test(x.message)?'Новый пароль совпадает со старым':x.message;el.disabled=false;}},
+  mic:function(v){startVoice(v);},
   asOn:function(){SET.assistant=true;saveSettings();render();},
   asClear:function(){if(!confirm('Очистить переписку с помощником?'))return;AS.msgs=[];asSave();render();},
   asPlan:function(){askAssistant('plan','План на сегодня');},

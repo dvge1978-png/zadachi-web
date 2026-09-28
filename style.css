@@ -306,3 +306,7 @@ body.pc .composer{bottom:16px}
 .rulebox{display:flex;flex-direction:column;gap:14px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surf)}
 /* поля времени внутри «чипа» должны быть видимыми (не как скрытый выбор даты) */
 .chip.tinw input.tin{position:static;inset:auto;opacity:1;width:118px;height:100%;cursor:text}
+/* голосовой ввод */
+.mic.rec{background:var(--warn);color:#fff;animation:micpulse 1.2s ease-in-out infinite}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 45%,transparent)}50%{box-shadow:0 0 0 8px transparent}}
+.composer .mic{width:42px;height:42px;flex-shrink:0}
