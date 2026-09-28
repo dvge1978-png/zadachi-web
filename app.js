@@ -63,7 +63,7 @@ var LCOLORS=['#8C8A84','#5F7FB8','#C98B5B','#7C9C83','#9B86C4','#C46A6A'];
 var ME=null;
 var D={nmembers:[],profiles:[],lists:[],members:[],tasks:[],log:[],habits:[],marks:{},notes:[],templates:[],comments:{}};
 var UI={view:'tasks',filter:'all',cal:'day',calDay:T(),sel:null,q:'',noteId:null,sheet:null,quick:''};
-var SET_DEF={theme:'light',accent:'#141414',layout:'auto',autoMove:true,quiet:{from:'23:00',to:'08:00'},hours:{from:'09:00',to:'21:00'},rewards:true,assistant:false};
+var SET_DEF={theme:'light',accent:'#141414',layout:'auto',autoMove:true,quiet:{from:'23:00',to:'08:00'},hours:{from:'09:00',to:'21:00'},rewards:true,assistant:false,showTpl:true,def:{date:'today',time:'none',at:'09:00',every:10,times:0}};
 var SET=JSON.parse(JSON.stringify(SET_DEF));
 function prof(id){return D.profiles.filter(function(p){return p.id===id;})[0];}
 function pname(id){var p=prof(id);return p?(p.name||p.email.split('@')[0]):'?';}
@@ -96,7 +96,7 @@ async function loadAll(){
   D.profiles=res[0];D.lists=res[1];D.members=res[2];D.tasks=res[3];D.log=res[4];D.habits=res[5];
   D.marks={};res[6].forEach(function(m){(D.marks[m.habit_id]=D.marks[m.habit_id]||{})[m.day]=m.count;});
   D.notes=res[7];D.templates=res[8];D.nmembers=res[9]||[];
-  var me=prof(ME);SET=Object.assign(JSON.parse(JSON.stringify(SET_DEF)),(me&&me.settings)||{});
+  var me=prof(ME);SET=Object.assign(JSON.parse(JSON.stringify(SET_DEF)),(me&&me.settings)||{});SET.def=Object.assign({},SET_DEF.def,SET.def||{});
 }
 var reloadTimer=null;
 function reloadSoon(){clearTimeout(reloadTimer);reloadTimer=setTimeout(function(){loadAll().then(render).catch(function(){});},400);}
@@ -166,12 +166,39 @@ function groupOf(t){
   if(d===0)return'today';if(d===1)return'tomorrow';if(d<7)return'week';return'later';
 }
 function sorter(a,b){if(a.done!==b.done)return a.done?1:-1;if((b.prio||0)!==(a.prio||0))return (b.prio||0)-(a.prio||0);var x=(a.due_date||'9')+(a.due_time||''),y=(b.due_date||'9')+(b.due_time||'');return x<y?-1:x>y?1:0;}
+var WDF=['понедельник','вторник','среду','четверг','пятницу','субботу','воскресенье'];
+var ORD={'1':['первый','первую','первое'],'2':['второй','вторую','второе'],'3':['третий','третью','третье'],'4':['четвёртый','четвёртую','четвёртое'],'-1':['последний','последнюю','последнее']};
+function addYears(k,n){var b=fromKey(k),y=b.getFullYear()+n,m=b.getMonth(),last=new Date(y,m+1,0).getDate();return keyOf(new Date(y,m,Math.min(b.getDate(),last)));}
+function nthWeekday(y,m,wd,n){var k;if(n===-1){k=keyOf(new Date(y,m+1,0));while(dow(k)!==wd)k=addDays(k,-1);return k;}k=keyOf(new Date(y,m,1));while(dow(k)!==wd)k=addDays(k,1);return addDays(k,7*(n-1));}
+function nextRule(r,d){r=r||{};var n=Math.max(1,+r.every||1),u=r.unit||'day';
+  if(u==='day')return addDays(r.from==='done'?T():d,n);
+  if(u==='week'){var days=r.days&&r.days.length?r.days:[dow(d)],anchor=addDays(d,-dow(d)),x=d;for(var i=0;i<800;i++){x=addDays(x,1);var wk=Math.round(diff(addDays(x,-dow(x)),anchor)/7);if(wk%n===0&&days.indexOf(dow(x))>=0)return x;}return addDays(d,7*n);}
+  if(u==='month'){var b=fromKey(d),first=new Date(b.getFullYear(),b.getMonth()+n,1),fy=first.getFullYear(),fm=first.getMonth(),last=new Date(fy,fm+1,0).getDate();
+    if(r.mode==='last')return keyOf(new Date(fy,fm,last));
+    if(r.mode==='nth')return nthWeekday(fy,fm,+r.wd||0,+r.nth||1);
+    return keyOf(new Date(fy,fm,Math.min(+r.mday||b.getDate(),last)));}
+  if(u==='year')return addYears(d,n);
+  return addDays(d,1);}
+function ruleText(r,due){r=r||{};var n=Math.max(1,+r.every||1),u=r.unit||'day';
+  if(u==='day')return (n===1?'каждый день':'каждые '+n+' '+plural(n,'день','дня','дней'))+(r.from==='done'?' после выполнения':'');
+  if(u==='week')return (n===1?'каждую неделю':'каждые '+n+' '+plural(n,'неделю','недели','недель'))+': '+(r.days&&r.days.length?r.days:[due?dow(due):0]).slice().sort().map(function(i){return WD[i];}).join(', ');
+  if(u==='month'){var p=n===1?'каждый месяц':'каждые '+n+' '+plural(n,'месяц','месяца','месяцев');
+    if(r.mode==='last')return p+', в последний день';
+    if(r.mode==='nth'){var wd=+r.wd||0,g=[0,0,1,0,1,1,2][wd],o=(ORD[String(r.nth||1)]||ORD['1'])[g];return p+', '+(String(r.nth)==='2'?'во':'в')+' '+o+' '+WDF[wd];}
+    return p+', '+(+r.mday||(due?fromKey(due).getDate():1))+'-го числа';}
+  if(u==='year')return (n===1?'каждый год':'раз в '+n+' '+plural(n,'год','года','лет'))+(due?', '+fmtDM(due):'');
+  return '';}
 function recurText(t){
+  if(t.recur==='custom')return ruleText(t.rule,t.due_date);
+  if(t.recur==='yearly')return 'каждый год'+(t.due_date?', '+fmtDM(t.due_date):'');
+  if(t.recur==='weekly'&&t.due_date)return 'каждую неделю: '+WD[dow(t.due_date)];
+  if(t.recur==='monthly'&&t.due_date)return 'каждый месяц, '+fromKey(t.due_date).getDate()+'-го числа';
   switch(t.recur){case'hourly':return'каждый час';case'daily':return'каждый день';case'weekdays':return'по будням';case'weekly':return'раз в неделю';case'monthly':return'раз в месяц';
     case'everyN':return'каждые '+t.recur_n+' '+plural(t.recur_n,'день','дня','дней');case'days':return (t.recur_days||[]).slice().sort().map(function(i){return WD[i];}).join(', ');}
   return'';
 }
 var RECUR=[['none','Не повторять'],['hourly','Каждый час'],['daily','Каждый день'],['weekdays','По будням'],['days','По дням недели'],['everyN','Каждые N дней'],['weekly','Каждую неделю'],['monthly','Каждый месяц']];
+function remindAll(t){var a=t.due_time?remindText(t.remind_every,t.remind_times):'';var x=(t.remind_at||[]).slice().sort();if(x.length)a=(a?a+'; ':'')+'ещё в '+x.join(', ');return a||'Нет';}
 function remindText(e,n){if(!e)return'Одно напоминание';if(!n)return'Каждые '+e+' мин, пока не выполню';return n+' '+plural(n,'раз','раза','раз')+' с шагом '+e+' мин';}
 function nextOcc(t){
   var today=T(),d=t.due_date,tm=t.due_time,r=t.recur,guard=0;
@@ -182,6 +209,8 @@ function nextOcc(t){
     else if(r==='days'){var s=t.recur_days&&t.recur_days.length?t.recur_days:[0,1,2,3,4,5,6];d=addDays(d,1);var g=0;while(s.indexOf(dow(d))<0&&g++<8)d=addDays(d,1);}
     else if(r==='everyN')d=addDays(d,Math.max(1,t.recur_n||2));
     else if(r==='weekly')d=addDays(d,7);
+    else if(r==='yearly')d=addYears(d,1);
+    else if(r==='custom')d=nextRule(t.rule,d);
     else if(r==='monthly'){var x=fromKey(d),day=x.getDate(),y=new Date(x.getFullYear(),x.getMonth()+1,1),last=new Date(y.getFullYear(),y.getMonth()+1,0).getDate();y.setDate(Math.min(day,last));d=keyOf(y);}
   }
   step();while(r!=='hourly'&&d<today&&guard++<600)step();
@@ -226,7 +255,12 @@ function myTasks(){return D.tasks.filter(mineVisible);}
 
 /* быстрый ввод: «завтра в 19:00 купить хлеб» */
 function parseQuick(s){
-  var t=s.trim(),date=null,time=null,m;
+  var t=s.trim(),date=null,time=null,m,rec=null,rule=null;
+  var DAYRE=['понедельник','вторник','сред[ау]','четверг','пятниц[ау]','суббот[ау]','воскресенье'];
+  DAYRE.forEach(function(w,i){var re=new RegExp('(^|\\s)(каждый|каждую|каждое|по)\\s+'+w.replace('[ау]','[аы]?[уа]?').replace('понедельник','понедельник(ам)?')+'(?=\\s|$)','i');if(!rec&&re.test(t)){rec='custom';rule={unit:'week',every:1,days:[i],mode:'date',nth:1,wd:i,from:'date'};var d=T(),g=0;while(dow(d)!==i&&g++<8)d=addDays(d,1);date=d;t=t.replace(re,' ');}});
+  [['каждый день','daily'],['ежедневно','daily'],['по будням','weekdays'],['каждую неделю','weekly'],['каждый месяц','monthly'],['каждый год','yearly'],['каждый час','hourly']].forEach(function(p){var re=new RegExp('(^|\\s)'+p[0]+'(?=\\s|$)','i');if(!rec&&re.test(t)){rec=p[1];t=t.replace(re,' ');}});
+  m=t.match(/(^|\s)кажды[ей]\s+(\d+)\s+(дн[яей]*|недел[иья]*|месяц[аев]*)(?=\s|$)/i);
+  if(!rec&&m){var nn=+m[2],u=/^дн/i.test(m[3])?'day':/^нед/i.test(m[3])?'week':'month';rec='custom';rule={unit:u,every:nn,days:[],mode:'date',nth:1,wd:0,from:'date'};if(u==='week')rule.days=[dow(T())];t=t.replace(m[0],' ');}
   var words={'сегодня':0,'завтра':1,'послезавтра':2};
   Object.keys(words).sort(function(a,b){return b.length-a.length;}).forEach(function(w){var re=new RegExp('(^|\\s)'+w+'(?=\\s|$)','i');if(re.test(t)){date=addDays(T(),words[w]);t=t.replace(re,' ');}});
   var days=['понедельник','вторник','сред[ау]','четверг','пятниц[ау]','суббот[ау]','воскресенье'];
@@ -236,7 +270,7 @@ function parseQuick(s){
   else{m=t.match(/(^|\s)(в|к|до)\s([01]?\d|2[0-3])(?=\s|$)/i);if(m){time=pad(+m[3])+':00';t=t.replace(m[0],' ');}}
   if(time&&!date)date=time>nowHM()?T():addDays(T(),1);
   t=t.replace(/\s+/g,' ').trim();
-  return{title:cap(t),due_date:date,due_time:time,remind_every:time?10:0,remind_times:time?3:0};
+  return{title:cap(t),due_date:date,due_time:time,remind_every:time?+SET.def.every||0:0,remind_times:time?+SET.def.times||0:0,recur:rec||'none',rule:rule||{}};
 }
 
 /* =================== Привычки =================== */
@@ -343,7 +377,6 @@ function tasksView(){
   ['overdue','tomorrow','week','later','nodate'].forEach(function(g){var it=groups[g];if(!it)return;out+=sec(names[g],'',g==='overdue');it.sort(sorter).forEach(function(t){out+=taskRow(t,g);});});
   if(fl&&!ts.length)out+='<div class="empty">В списке пока пусто.</div>';
   if(fl){out+='<div class="hint"><button class="link" data-a="listEdit" data-id="'+fl.id+'">Настроить список</button>'+(fl.hidden?' · скрытый список: его задачи не видны во «Все»':'')+'</div>';}
-  if(!isPC())out+='<div class="hint">Смахни задачу влево или удерживай её, чтобы перенести</div>';
   return out;
 }
 function inboxView(){
@@ -530,6 +563,8 @@ function bindMain(){
   var f=document.getElementById('quick');
   if(f){var qi=document.getElementById('qin');qi.addEventListener('input',function(){UI.quick=qi.value;});
     f.addEventListener('submit',async function(e){e.preventDefault();var v=qi.value.trim();if(!v)return;var p=parseQuick(v);if(!p.title){toast('Напиши, что нужно сделать');return;}
+      if(!p.due_date){var dd={};defaultsInto(dd);p.due_date=dd.due_date;if(!p.due_time){p.due_time=dd.due_time;p.remind_every=dd.due_time?dd.remind_every:0;p.remind_times=dd.remind_times;}}
+      if(p.recur!=='none'&&!p.due_date)p.due_date=T();
       if(UI.filter!=='all')p.list_id=UI.filter;UI.quick='';qi.value='';var r=await createTask(p);if(r)toast('Добавлено: '+r.title+(r.due_date?', '+dayWord(r.due_date).toLowerCase()+(r.due_time?' в '+r.due_time:''):''));});}
   var af=document.getElementById('asform');if(af){var ai=document.getElementById('asin');ai.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();af.requestSubmit?af.requestSubmit():af.dispatchEvent(new Event('submit',{cancelable:true}));}});ai.addEventListener('input',function(){ai.style.height='auto';ai.style.height=Math.min(ai.scrollHeight,160)+'px';});
     af.addEventListener('submit',function(e){e.preventDefault();var v=ai.value.trim();if(!v||AS.busy)return;ai.value='';askAssistant('chat',v);});}
@@ -539,7 +574,7 @@ function bindMain(){
 /* =================== Карточка задачи =================== */
 function detailHead(t){return '<div class="hd"><h3>'+(t.done?'Выполнено':t.status==='pending'&&t.assignee===ME?'Прислали тебе':'Задача')+'</h3><button class="iconbtn" data-a="closeDetail" aria-label="Закрыть">'+I('x')+'</button></div>';}
 function taskDetail(t){
-  var l=listOf(t),rows=[['clock','Когда',t.due_date?dayWord(t.due_date)+(t.due_time?', '+t.due_time:''):'Без срока'],['bell','Напоминания',t.due_time?remindText(t.remind_every,t.remind_times):'Нет'],['repeat','Повтор',t.recur==='none'?'Не повторять':cap(recurText(t))],['list','Список',l?l.name:'Без списка'],['flag','Приоритет',['Обычный','Важно','Очень важно','Срочно'][t.prio||0]]];
+  var l=listOf(t),rows=[['clock','Когда',t.due_date?dayWord(t.due_date)+(t.due_time?', '+t.due_time:''):'Без срока'],['bell','Напоминания',t.due_date?remindAll(t):'Нет'],['repeat','Повтор',t.recur==='none'?'Не повторять':cap(recurText(t))],['list','Список',l?l.name:'Без списка'],['flag','Приоритет',['Обычный','Важно','Очень важно','Срочно'][t.prio||0]]];
   if(t.owner!==ME)rows.push(['users','От кого',pname(t.owner)]);
   if(t.assignee&&t.assignee!==ME)rows.push(['send','Кому',pname(t.assignee)+' · '+(t.status==='pending'?'ждёт ответа':t.status==='declined'?'отклонено':'принято')]);
   var subs=t.subs||[];
@@ -568,6 +603,11 @@ function taskActions(t){
 function chips(label,opts,cur,key,hint,extra){
   return '<div><div class="gl">'+label+'</div><div class="chips">'+opts.map(function(o){return '<button class="chip'+(String(o[0])===String(cur)?' on':'')+'" data-a="set" data-k="'+key+'" data-v="'+esc(o[0])+'">'+o[1]+'</button>';}).join('')+(extra||'')+'</div>'+(hint?'<div class="gh">'+hint+'</div>':'')+'</div>';
 }
+function parseTime(s){s=String(s==null?'':s).trim();if(!s)return null;var h,mi,m=s.match(/^(\d{1,2})\s*[:.,\-\s]\s*(\d{1,2})$/);
+  if(m){h=+m[1];mi=+m[2];}else{if(!/^\d{1,4}$/.test(s))return null;if(s.length<=2){h=+s;mi=0;}else if(s.length===3){h=+s[0];mi=+s.slice(1);}else{h=+s.slice(0,2);mi=+s.slice(2);}}
+  if(!(h>=0&&h<=23&&mi>=0&&mi<=59))return null;return pad(h)+':'+pad(mi);}
+function timeField(key,val,ph){return '<span class="chip tinw"><input class="tin" data-tin="'+key+'" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="'+esc(ph||'чч:мм')+'" aria-label="'+esc(ph||'Время')+'" value="'+esc(val||'')+'"></span>';}
+function timeChoice(label,key,cur,presets,noneLabel,hint){var list=presets.slice();if(cur&&list.indexOf(cur)<0)list.push(cur);list.sort();return chips(label,(noneLabel?[['',noneLabel]]:[]).concat(list.map(function(x){return[x,x];})),cur||'',key,hint,timeField(key,'','своё: 7:30'));}
 function customChip(key,cur,presets,unit){var c=cur!==''&&cur!=null&&presets.map(String).indexOf(String(cur))<0;return '<button class="chip'+(c?' on':'')+'" data-a="custom" data-k="'+key+'" data-v="'+unit+'">'+(c?cur+' '+unit:'Своё…')+'</button>';}
 function timeChip(key,cur,presets,label){var c=cur&&presets.indexOf(cur)<0;return '<label class="chip'+(c?' on':'')+'">'+(c?cur:label||'Другое время')+'<input type="time" data-in="'+key+'" value="'+(cur||'09:00')+'" aria-label="'+(label||'Другое время')+'"></label>';}
 function colorChips(cur,key,list){var c=list.indexOf(cur)<0;return '<div class="swatches">'+list.map(function(x){return '<button class="sw'+(x===cur?' on':'')+'" style="--c:'+x+'" data-a="set" data-k="'+key+'" data-v="'+x+'" aria-label="Цвет '+x+'"></button>';}).join('')+'<label class="sw any'+(c?' on':'')+'" style="'+(c?'background:'+esc(cur):'')+'" aria-label="Свой цвет"><input type="color" data-in="'+key+'" value="'+(c?esc(cur):'#888888')+'"></label></div>';}
@@ -579,27 +619,45 @@ function applyTpl(d,key){
   else if(key==='today'){var h=new Date().getHours()+1;if(h>=23){d.due_date=addDays(t,1);d.due_time='09:00';}else{d.due_date=t;d.due_time=pad(h)+':00';}d.remind_every=10;d.remind_times=3;d.recur='none';}
   else if(key==='daily'){d.due_date=addDays(t,1);d.due_time='09:00';d.remind_every=10;d.remind_times=3;d.recur='daily';}
   else if(key==='nodate'){d.due_date=null;d.due_time=null;d.recur='none';d.remind_every=0;}
-  else if(key.indexOf('u:')===0){var u=D.templates.filter(function(x){return 'u:'+x.id===key;})[0];if(u){var x=u.data;d.due_date=x.off==null?null:addDays(t,x.off);['due_time','remind_every','remind_times','recur','recur_n','prio','list_id'].forEach(function(f){if(x[f]!==undefined)d[f]=x[f];});d.recur_days=(x.recur_days||[]).slice();if(d.list_id&&!findList(d.list_id))d.list_id=null;}}
+  else if(key.indexOf('u:')===0){var u=D.templates.filter(function(x){return 'u:'+x.id===key;})[0];if(u){var x=u.data;d.due_date=x.off==null?null:addDays(t,x.off);['due_time','remind_every','remind_times','recur','recur_n','prio','list_id'].forEach(function(f){if(x[f]!==undefined)d[f]=x[f];});d.recur_days=(x.recur_days||[]).slice();d.remind_at=(x.remind_at||[]).slice();d.rule=JSON.parse(JSON.stringify(x.rule||{}));if(d.list_id&&!findList(d.list_id))d.list_id=null;}}
+}
+var RPRE=[['none','Не повторять'],['daily','Каждый день'],['weekdays','По будням'],['weekly','Каждую неделю'],['monthly','Каждый месяц'],['yearly','Каждый год'],['hourly','Каждый час'],['custom','Настроить…']];
+function defRule(d){var w=d.due_date?dow(d.due_date):0;return{unit:'week',every:1,days:[w],mode:'date',nth:1,wd:w,from:'date'};}
+function recurBlock(d){
+  var hint='';if(d.recur==='weekly')hint='По дню недели даты: '+WDF[dow(d.due_date)].replace('среду','среда').replace('пятницу','пятница').replace('субботу','суббота');
+  else if(d.recur==='monthly')hint=fromKey(d.due_date).getDate()+'-го числа каждого месяца';else if(d.recur==='yearly')hint='Каждый год '+fmtDM(d.due_date);else if(d.recur==='hourly')hint='С '+SET.hours.from+' до '+SET.hours.to+'. Меняется в настройках.';
+  var h=chips('Повтор',RPRE,d.recur,'recur',hint);
+  if(d.recur!=='custom')return h;
+  var r=d.rule;if(!r||!r.unit){r=d.rule=defRule(d);}var n=Math.max(1,+r.every||1);
+  h+='<div class="rulebox">';
+  h+=chips('Каждые',[1,2,3,4,6].map(function(x){return[x,String(x)];}),n,'r_every','',customChip('r_every',n,[1,2,3,4,6],''));
+  h+=chips('Чего',[['day',plural(n,'день','дня','дней')],['week',plural(n,'неделя','недели','недель')],['month',plural(n,'месяц','месяца','месяцев')],['year',plural(n,'год','года','лет')]],r.unit,'r_unit');
+  if(r.unit==='week')h+=wdChips(r.days||[],'rwd','По каким дням');
+  if(r.unit==='month'){h+=chips('Какой день месяца',[['date',fromKey(d.due_date).getDate()+'-го числа'],['last','Последний день'],['nth','День недели по счёту']],r.mode||'date','r_mode');
+    if(r.mode==='nth'){h+=chips('Какой по счёту',[[1,'Первый'],[2,'Второй'],[3,'Третий'],[4,'Четвёртый'],[-1,'Последний']],r.nth||1,'r_nth');h+=chips('День недели',WD.map(function(w,i){return[i,w];}),+r.wd||0,'r_wd');}}
+  if(r.unit==='day')h+=chips('Считать',[['date','От даты задачи'],['done','От дня выполнения']],r.from||'date','r_from','«От дня выполнения»: если сделал позже, следующий раз сдвинется. Удобно для стрижки или замены фильтра.');
+  h+='<div class="gh" style="margin-top:0"><b>Итого:</b> '+esc(ruleText(r,d.due_date))+'</div></div>';
+  return h;
 }
 function taskForm(d){
-  var t=T(),h='<input class="fld" id="d-title" placeholder="Что нужно сделать" aria-label="Название" value="'+esc(d.title)+'">';
-  var sum='<div class="sum"><b>'+(d.due_date?dayWord(d.due_date)+(d.due_time?' в '+d.due_time:''):'Без срока')+'</b>'+(d.due_date&&d.due_time?'<span>'+remindText(d.remind_every,d.remind_times)+'</span>':'')+(d.recur!=='none'&&d.due_date?'<span>Повтор: '+esc(recurText(d))+'</span>':'')+'</div>';
-  h+=sum;
-  if(!d.id)h+=chips('Шаблон',BUILTIN.concat(D.templates.map(function(x){return['u:'+x.id,'★ '+esc(x.name)];})),d.tpl,'tpl');
+  var t=T(),h='';
+  if(d._draft)h+='<div class="sum" style="border-style:dashed;flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><span>Черновик восстановлен</span><button class="link" data-a="draftClear">Начать заново</button></div>';
+  h+='<input class="fld" id="d-title" placeholder="Что нужно сделать" aria-label="Название" value="'+esc(d.title)+'">';
+  var rem=d.due_date?remindAll(d):'';
+  h+='<div class="sum"><b>'+(d.due_date?dayWord(d.due_date)+(d.due_time?' в '+d.due_time:''):'Без срока')+'</b>'+(rem&&rem!=='Нет'?'<span>'+esc(rem)+'</span>':'')+(d.recur!=='none'&&d.due_date?'<span>Повтор: '+esc(recurText(d))+'</span>':'')+'</div>';
+  if(!d.id&&SET.showTpl!==false)h+=chips('Шаблон',BUILTIN.concat(D.templates.map(function(x){return['u:'+x.id,'★ '+esc(x.name)];})),d.tpl,'tpl');
   h+=chips('Список',[['','Без списка']].concat(D.lists.map(function(l){return[l.id,'<i class="dot" style="--c:'+esc(l.color)+'"></i>'+esc(l.name)];})),d.list_id||'','list_id','','<button class="chip" data-a="listNew">'+I('plus')+'Новый</button>');
   h+=chips('Приоритет',[[0,'Обычный'],[1,'Важно'],[2,'Очень важно'],[3,'Срочно']],d.prio,'prio');
   var dk=!d.due_date?'none':d.due_date===t?'today':d.due_date===addDays(t,1)?'tomorrow':'pick';
   h+=chips('Когда',[['today','Сегодня'],['tomorrow','Завтра']],dk,'datekey','','<label class="chip'+(dk==='pick'?' on':'')+'">'+(dk==='pick'?cap(fmtShort(d.due_date)):'Другая дата')+'<input type="date" data-in="due_date" value="'+(d.due_date||t)+'" aria-label="Другая дата"></label><button class="chip'+(dk==='none'?' on':'')+'" data-a="set" data-k="datekey" data-v="none">Без срока</button>');
   if(d.due_date){
-    var base=['08:00','09:00','12:00','15:00','18:00','21:00'];
-    h+=chips('Время',[['','Без времени']].concat(base.map(function(x){return[x,x];})),d.due_time||'','due_time','',timeChip('due_time',d.due_time,base.concat(['']),'Другое'));
+    h+=timeChoice('Время','due_time',d.due_time,['08:00','09:00','12:00','15:00','18:00','21:00'],'Без времени','Можно вписать своё: 7, 730 или 7:30');
     if(d.due_time){
       h+=chips('Повторять напоминание',[0,5,10,15,30,60].map(function(x){return[x,x?x+' мин':'Нет'];}),d.remind_every,'remind_every','',customChip('remind_every',d.remind_every,[0,5,10,15,30,60],'мин'));
       if(d.remind_every)h+=chips('Сколько раз',[2,3,5,10,0].map(function(x){return[x,x?x+' '+plural(x,'раз','раза','раз'):'Пока не выполню'];}),d.remind_times,'remind_times','С '+SET.quiet.from+' до '+SET.quiet.to+' повторы не приходят. Меняется в настройках.',customChip('remind_times',d.remind_times,[2,3,5,10,0],'раз'));
     }
-    h+=chips('Повтор',RECUR,d.recur,'recur');
-    if(d.recur==='everyN')h+=chips('Через сколько дней',[2,3,4,5,7,10,14,30].map(function(x){return[x,'через '+x];}),d.recur_n,'recur_n','',customChip('recur_n',d.recur_n,[2,3,4,5,7,10,14,30],'дн.'));
-    if(d.recur==='days')h+=wdChips(d.recur_days,'rday','В какие дни');
+    h+='<div><div class="gl">Ещё напомнить в</div><div class="chips">'+(d.remind_at||[]).slice().sort().map(function(x){return '<button class="chip on" data-a="remAtDel" data-v="'+x+'" aria-label="Убрать напоминание в '+x+'">'+x+' '+I('x')+'</button>';}).join('')+timeField('remind_add','','добавить: 7:00')+'</div><div class="gh">Впиши время и нажми Enter. Например, 7, 8 и 9, чтобы напомнить три раза утром.</div></div>';
+    h+=recurBlock(d);
   }
   h+='<label><div class="gl">Описание</div><textarea class="fld" id="d-details" placeholder="Подробности, ссылки, адрес" aria-label="Описание">'+esc(d.details||'')+'</textarea></label>';
   if(!d.id)h+='<button class="btn2" data-a="saveTpl">'+I('star')+'Сохранить настройки как свой шаблон</button>';
@@ -612,8 +670,8 @@ function habitForm(d){
   h+=chips('Сколько раз в день',[1,2,3,4,5,8,10].map(function(x){return[x,x+' '+plural(x,'раз','раза','раз')];}),d.target,'target','',customChip('target',d.target,[1,2,3,4,5,8,10],'раз'));
   h+=chips('Дни',[['all','Каждый день'],['wk','По будням'],['pick','Выбрать']],d.dmode,'dmode');
   if(d.dmode==='pick')h+=wdChips(d.days,'hday','Какие дни');
-  var tp=['','08:00','09:00','12:00','15:00','20:00','21:00'];
-  h+=chips('Напоминание',tp.map(function(x){return[x,x||'Нет'];}),d.remind||'','remind','',timeChip('remind',d.remind,tp,'Своё время'));
+  h+=timeChoice('Напоминание','remind',d.remind,['08:00','09:00','12:00','15:00','20:00','21:00'],'Нет','Можно вписать своё: 7, 730 или 7:30');
+  if(d.remind)h+=chips('Повторять, пока не отмечу',[0,15,30,60,120].map(function(x){return[x,x?(x<60?x+' мин':(x/60)+' ч'):'Нет'];}),+d.remind_every||0,'remind_every','После первого напоминания будет напоминать снова через это время, пока не отметишь. В тихие часы не беспокоит.',customChip('remind_every',+d.remind_every||0,[0,15,30,60,120],'мин'));
   return h;
 }
 function habitDetail(hb,off){
@@ -623,7 +681,7 @@ function habitDetail(hb,off){
   h+='<div style="--hc:'+esc(hb.color)+'"><div class="calnav" style="margin:0 0 10px"><button class="iconbtn" data-a="hwk" data-v="-7" aria-label="Прошлая неделя">'+I('left')+'</button><b>'+fmt(addDays(mon,3),{month:'long'})+'</b><button class="iconbtn" data-a="hwk" data-v="7" aria-label="Следующая неделя"'+(off>=0?' disabled style="opacity:.3"':'')+'>'+I('right')+'</button></div><div class="hweek">';
   for(var i=0;i<7;i++){var k=addDays(mon,i);h+='<div><small>'+WD[i]+'</small><button class="'+(hDone(hb,k)?'on ':'')+(k===t?'t ':'')+(sched(hb,k)?'':'skip')+'" data-a="habDay" data-id="'+hb.id+'" data-v="'+k+'"'+(k>t?' disabled':'')+' aria-label="'+fmtLong(k)+'">'+fromKey(k).getDate()+'</button></div>';}
   h+='</div></div><div class="stats"><div><b>'+streak(hb)+'</b><small>подряд</small></div><div><b>'+pct(hb)+'%</b><small>выполнение</small></div><div><b>'+totalDone(hb)+'</b><small>всего</small></div></div>';
-  h+='<div class="fields"><div class="fr">'+I('bell')+'<span>Напоминание</span><b style="font-weight:500">'+(hb.remind||'нет')+'</b></div><div class="fr">'+I('cal')+'<span>Дни</span><b style="font-weight:500">'+daysText(hb)+'</b></div><div class="fr">'+I('star')+'<span>В день</span><b style="font-weight:500">'+tgt(hb)+' '+plural(tgt(hb),'раз','раза','раз')+'</b></div></div>';
+  h+='<div class="fields"><div class="fr">'+I('bell')+'<span>Напоминание</span><b style="font-weight:500">'+(hb.remind?hb.remind+(hb.remind_every?', потом каждые '+hb.remind_every+' мин':''):'нет')+'</b></div><div class="fr">'+I('cal')+'<span>Дни</span><b style="font-weight:500">'+daysText(hb)+'</b></div><div class="fr">'+I('star')+'<span>В день</span><b style="font-weight:500">'+tgt(hb)+' '+plural(tgt(hb),'раз','раза','раз')+'</b></div></div>';
   return h;
 }
 function listForm(d){
@@ -646,8 +704,16 @@ function settingsForm(){
   h+=chips('Незавершённые задачи',[['1','Переносить на сегодня'],['0','Оставлять в «Просрочено»']],SET.autoMove?'1':'0','s_autoMove');
   h+=chips('Помощник Claude',[['1','Включён'],['0','Выключен']],SET.assistant?'1':'0','s_assistant','Когда пользуешься помощником, твои задачи, привычки и заметки отправляются в Claude (Anthropic) для обработки.');
   h+=chips('Поздравления и анимации',[['1','Включены'],['0','Выключены']],SET.rewards?'1':'0','s_rewards');
-  h+='<div><div class="gl">Тихие часы (повторы напоминаний не приходят)</div><div class="chips">'+timeChip('q_from',SET.quiet.from,[],'с').replace('>'+SET.quiet.from+'<','>с '+SET.quiet.from+'<')+timeChip('q_to',SET.quiet.to,[],'до').replace('>'+SET.quiet.to+'<','>до '+SET.quiet.to+'<')+'</div></div>';
-  h+='<div><div class="gl">Задачи «каждый час»</div><div class="chips">'+timeChip('h_from',SET.hours.from,[],'с').replace('>'+SET.hours.from+'<','>с '+SET.hours.from+'<')+timeChip('h_to',SET.hours.to,[],'до').replace('>'+SET.hours.to+'<','>до '+SET.hours.to+'<')+'</div></div>';
+  var df=SET.def;
+  h+='<div class="rulebox"><div class="gl" style="margin:0;font-size:15px;color:var(--ink)">Новая задача по умолчанию</div>';
+  h+=chips('Когда',[['today','Сегодня'],['tomorrow','Завтра'],['none','Без срока']],df.date,'sd_date');
+  h+=chips('Время',[['none','Без времени'],['next','Через час'],['fixed',df.time==='fixed'?df.at:'Своё']],df.time,'sd_time',df.time==='fixed'?'Впиши время в поле и нажми Enter':'',df.time==='fixed'?timeField('def_at','','изменить: 9:00'):'');
+  h+=chips('Повторять напоминание',[0,5,10,15,30,60].map(function(x){return[x,x?x+' мин':'Нет'];}),+df.every,'sd_every','',customChip('def_every',+df.every,[0,5,10,15,30,60],'мин'));
+  if(+df.every)h+=chips('Сколько раз',[2,3,5,10,0].map(function(x){return[x,x?x+' '+plural(x,'раз','раза','раз'):'Пока не выполню'];}),+df.times,'sd_times','',customChip('def_times',+df.times,[2,3,5,10,0],'раз'));
+  h+=chips('Шаблоны в окне новой задачи',[['1','Показывать'],['0','Скрыть']],SET.showTpl===false?'0':'1','s_showTpl');
+  h+='</div>';
+  h+='<div><div class="gl">Тихие часы: повторы напоминаний не приходят</div><div class="chips" style="align-items:center">с '+timeField('q_from',SET.quiet.from,'23:00')+' до '+timeField('q_to',SET.quiet.to,'08:00')+'</div></div>';
+  h+='<div><div class="gl">Задачи «каждый час» напоминают</div><div class="chips" style="align-items:center">с '+timeField('h_from',SET.hours.from,'09:00')+' до '+timeField('h_to',SET.hours.to,'21:00')+'</div></div>';
   h+='<div><div class="gl">Мои шаблоны</div>'+(D.templates.length?'<div class="chips">'+D.templates.map(function(x){return '<button class="chip" data-a="tplDel" data-id="'+x.id+'">'+esc(x.name)+' '+I('x')+'</button>';}).join('')+'</div>':'<div class="gh" style="margin:0">Создай задачу и нажми «Сохранить настройки как свой шаблон».</div>')+'</div>';
   h+='<div class="row2"><button class="btn2" data-a="lists">'+I('list')+'Управлять списками</button><button class="btn2" data-a="passOpen">'+I('gear')+'Сменить пароль</button></div>';
   h+='<div class="gh">Установить на телефон: в Safari «Поделиться» → «На экран „Домой“», в Chrome меню ⋮ → «Добавить на главный экран».</div>';
@@ -691,6 +757,19 @@ function bindSheet(){
   var root=document.getElementById('sheet'),s=UI.sheet;
   [['d-title','title'],['d-details','details'],['d-name','name'],['d-lname','name']].forEach(function(p){var el=root.querySelector('#'+p[0]);if(el)el.addEventListener('input',function(){s[p[1]]=el.value;});});
   var sn=root.querySelector('#s-name');if(sn)sn.addEventListener('change',function(){var v=sn.value.trim();var me=prof(ME);if(me)me.name=v;q(sb.from('profiles').update({name:v}).eq('id',ME)).then(function(){render();toast('Имя сохранено');}).catch(err);});
+  root.querySelectorAll('input[data-tin]').forEach(function(el){
+    var done=false;function apply(){if(done)return;var raw=el.value.trim(),k=el.getAttribute('data-tin');if(!raw)return;var v=parseTime(raw);
+      if(!v){toast('Не понял время. Напиши, например, 7, 730 или 7:30');return;}done=true;
+      if(k==='due_time'){s.due_time=v;s.tpl=null;}
+      else if(k==='remind_add'){s.remind_at=(s.remind_at||[]).filter(function(x){return x!==v;}).concat([v]).sort();}
+      else if(k==='remind'){s.remind=v;}
+      else if(k==='q_from'||k==='q_to'){SET.quiet[k==='q_from'?'from':'to']=v;saveSettings();}
+      else if(k==='h_from'||k==='h_to'){SET.hours[k==='h_from'?'from':'to']=v;saveSettings();}
+      else if(k==='def_at'){SET.def.at=v;SET.def.time='fixed';saveSettings();}
+      renderSheet();var nx=document.querySelector('#sheet input[data-tin="'+k+'"]');if(nx&&k==='remind_add')nx.focus();}
+    el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();apply();}});
+    el.addEventListener('change',apply);
+  });
   root.querySelectorAll('input[data-in]').forEach(function(el){el.addEventListener(el.type==='color'?'input':'change',function(){
     var k=el.getAttribute('data-in'),v=el.value;if(!v)return;
     if(k==='move'){moveTask(s.id,v);return;}
@@ -708,10 +787,20 @@ function bindDetailForms(scope){
 }
 function refreshKeep(sel){if(UI.sheet){renderSheet();}var n=document.querySelector((UI.sheet?'#sheet ':'#app ')+sel);if(n)n.focus();}
 function closeSheet(){UI.sheet=null;renderSheet();}
+function draftKey(){return 'zadachi-draft-'+ME;}
+function clearDraft(){try{localStorage.removeItem(draftKey());}catch(e){}}
+function saveDraft(){var s=UI.sheet;if(s&&s.type==='task-edit'&&!s.id&&((s.title||'').trim()||(s.details||'').trim())){try{var c=JSON.parse(JSON.stringify(s));delete c._draft;localStorage.setItem(draftKey(),JSON.stringify(c));toast('Черновик сохранён, откроется при следующей новой задаче');}catch(e){}}}
+function userClose(){var s=UI.sheet;if(s&&s.back){UI.sheet=s.back;renderSheet(true);return;}saveDraft();closeSheet();}
+function defaultsInto(d){var df=SET.def||SET_DEF.def,t=T();d.tpl=null;d.recur='none';
+  d.due_date=df.date==='today'?t:df.date==='tomorrow'?addDays(t,1):null;
+  if(d.due_date&&df.time==='fixed')d.due_time=df.at||'09:00';else if(d.due_date&&df.time==='next'){var hh=new Date().getHours()+1;d.due_time=hh<=23?pad(hh)+':00':null;}else d.due_time=null;
+  d.remind_every=+df.every||0;d.remind_times=+df.times||0;}
 function openTask(id){if(isPC()){UI.sel=id;UI.sheet=null;renderSheet();render();}else{UI.sheet={type:'task',id:id};renderSheet(true);}}
 function openAdd(title,extra){
-  var d={type:'task-edit',title:title||'',details:'',list_id:UI.view==='tasks'&&UI.filter!=='all'?UI.filter:null,prio:0,recur:'none',recur_n:2,recur_days:[],remind_every:10,remind_times:0};
-  applyTpl(d,'tomorrow');if(UI.view==='calendar'){d.due_date=UI.calDay;d.tpl=null;}
+  if(!title&&!extra){var dr=null;try{dr=JSON.parse(localStorage.getItem(draftKey())||'null');}catch(e){}
+    if(dr&&dr.type==='task-edit'){dr._draft=true;dr.remind_at=dr.remind_at||[];dr.rule=dr.rule||{};dr.recur_days=dr.recur_days||[];UI.sheet=dr;renderSheet(true);return;}}
+  var d={type:'task-edit',title:title||'',details:'',list_id:UI.view==='tasks'&&UI.filter!=='all'?UI.filter:null,prio:0,recur:'none',recur_n:2,recur_days:[],remind_at:[],rule:{},remind_every:10,remind_times:0};
+  defaultsInto(d);if(UI.view==='calendar'){d.due_date=UI.calDay;}
   var fl=d.list_id&&findList(d.list_id);if(fl&&fl.hidden)applyTpl(d,'nodate');
   Object.assign(d,extra||{});UI.sheet=d;renderSheet(true);
 }
@@ -730,7 +819,10 @@ var A={
   chk:function(v,id,el){var t=findTask(id);if(!t)return;if(el&&SET.rewards){el.classList.add('pop');}if(t.done)reopenTask(id);else completeTask(id);},
   open:function(v,id){openTask(id);},
   closeDetail:function(){UI.sel=null;render();},
-  edit:function(v,id){var t=findTask(id);UI.sheet=Object.assign({type:'task-edit',tpl:null},JSON.parse(JSON.stringify(t)));UI.sheet.recur_days=UI.sheet.recur_days||[];renderSheet(true);},
+  edit:function(v,id){var t=findTask(id),s=UI.sheet=Object.assign({type:'task-edit',tpl:null},JSON.parse(JSON.stringify(t)));s.recur_days=s.recur_days||[];s.remind_at=s.remind_at||[];s.rule=s.rule||{};
+    if(s.recur==='days'){s.recur='custom';s.rule={unit:'week',every:1,days:s.recur_days.slice(),mode:'date',nth:1,wd:0,from:'date'};}
+    else if(s.recur==='everyN'){s.recur='custom';s.rule={unit:'day',every:s.recur_n||2,days:[],mode:'date',nth:1,wd:0,from:'date'};}
+    renderSheet(true);},
   del:function(v,id){deleteTask(id);},
   moveOpen:function(v,id){UI.sheet={type:'move',id:id};renderSheet(true);},
   sendOpen:function(v,id){UI.sheet={type:'send',id:id};renderSheet(true);},
@@ -741,15 +833,19 @@ var A={
   subDel:function(v,id){var t=findTask(id);patchTask(id,{subs:(t.subs||[]).filter(function(s){return s.id!==v;})});},
   saveTask:async function(){
     var s=UI.sheet;if(!s.title||!s.title.trim()){toast('Напиши, что нужно сделать');return;}
-    if(s.due_date&&s.recur==='days'&&!s.recur_days.length){toast('Выбери хотя бы один день');return;}
-    var f={title:s.title.trim(),details:s.details||'',list_id:s.list_id||null,prio:+s.prio||0,due_date:s.due_date||null,due_time:s.due_date?(s.due_time||null):null,remind_every:s.due_date&&s.due_time?+s.remind_every||0:0,remind_times:+s.remind_times||0,recur:s.due_date?s.recur:'none',recur_n:+s.recur_n||2,recur_days:s.recur_days||[]};
+    if(s.due_date&&s.recur==='custom'&&s.rule&&s.rule.unit==='week'&&!(s.rule.days&&s.rule.days.length)){toast('Выбери хотя бы один день недели');return;}
+    var rule={};if(s.due_date&&s.recur==='custom'){rule=Object.assign({},s.rule);rule.every=Math.max(1,+rule.every||1);if(rule.unit==='month'&&(rule.mode||'date')==='date')rule.mday=fromKey(s.due_date).getDate();}
+    var f={title:s.title.trim(),details:s.details||'',list_id:s.list_id||null,prio:+s.prio||0,due_date:s.due_date||null,due_time:s.due_date?(s.due_time||null):null,remind_every:s.due_date&&s.due_time?+s.remind_every||0:0,remind_times:+s.remind_times||0,remind_at:s.due_date?(s.remind_at||[]):[],recur:s.due_date?s.recur:'none',recur_n:+s.recur_n||2,recur_days:s.recur_days||[],rule:rule};
+    if(!s.id)clearDraft();
     closeSheet();
     if(s.id){await patchTask(s.id,f);toast('Сохранено');}
     else{var r=await createTask(f);if(r)toast('Добавлено: '+(r.due_date?dayWord(r.due_date).toLowerCase()+(r.due_time?' в '+r.due_time:''):'без срока'));}
   },
   set:function(v,id,el){
     var k=el.getAttribute('data-k'),s=UI.sheet,t=T();
-    if(k.indexOf('s_')===0){var sk=k.slice(2);if(sk==='autoMove'||sk==='rewards'||sk==='assistant')SET[sk]=v==='1';else SET[sk]=v;saveSettings();render();return;}
+    if(k.indexOf('s_')===0){var sk=k.slice(2);if(sk==='autoMove'||sk==='rewards'||sk==='assistant'||sk==='showTpl')SET[sk]=v==='1';else SET[sk]=v;saveSettings();render();return;}
+    if(k.indexOf('sd_')===0){var dk2=k.slice(3);SET.def[dk2]=(dk2==='every'||dk2==='times')?+v:v;if(dk2==='time'&&v==='fixed'&&!SET.def.at)SET.def.at='09:00';saveSettings();renderSheet();return;}
+    if(k.indexOf('r_')===0){var rk=k.slice(2);s.rule=s.rule||defRule(s);s.rule[rk]=(rk==='every'||rk==='nth'||rk==='wd')?+v:v;if(rk==='unit'&&v==='week'&&!(s.rule.days&&s.rule.days.length))s.rule.days=[s.due_date?dow(s.due_date):0];renderSheet();return;}
     if(k==='tpl')applyTpl(s,v);
     else if(k==='datekey'){s.tpl=null;s.due_date=v==='today'?t:v==='tomorrow'?addDays(t,1):null;}
     else if(k==='move'){moveTask(s.id,v==='none'?null:addDays(t,+v));return;}
@@ -758,25 +854,30 @@ var A={
     else if(['remind_every','remind_times','recur_n','prio','target'].indexOf(k)>=0){s[k]=+v;s.tpl=null;}
     else if(k==='due_time'){s.due_time=v||null;s.tpl=null;}
     else if(k==='remind'){s.remind=v||null;}
-    else{s[k]=v;if(k==='recur'){s.tpl=null;if(v==='days'&&!s.recur_days.length&&s.due_date)s.recur_days=[dow(s.due_date)];}}
+    else{s[k]=v;if(k==='recur'){s.tpl=null;if(v==='custom'&&!(s.rule&&s.rule.unit))s.rule=defRule(s);}}
     renderSheet();
   },
   custom:function(v,id,el){
     var k=el.getAttribute('data-k'),s=UI.sheet;
-    var n=prompt('Своё значение ('+v+')',k!=='moveN'&&s[k]!=null?s[k]:'');if(n===null)return;n=parseInt(String(n).replace(/[^0-9]/g,''),10);
-    var max={remind_every:720,remind_times:100,recur_n:365,target:100,moveN:365}[k]||999;
+    var cur0=k==='r_every'?(s.rule&&s.rule.every):k.indexOf('def_')===0?SET.def[k.slice(4)]:k!=='moveN'?s[k]:'';var n=prompt('Своё значение'+(v?' ('+v+')':''),cur0!=null?cur0:'');if(n===null)return;n=parseInt(String(n).replace(/[^0-9]/g,''),10);
+    var max={remind_every:720,remind_times:100,recur_n:365,target:100,moveN:365,r_every:365,def_every:720,def_times:100}[k]||999;
     if(!(n>=1&&n<=max)){toast('Нужно число от 1 до '+max);return;}
     if(k==='moveN'){moveTask(s.id,addDays(T(),n));return;}
+    if(k==='r_every'){s.rule.every=n;renderSheet();return;}
+    if(k.indexOf('def_')===0){SET.def[k.slice(4)]=n;saveSettings();renderSheet();return;}
     s[k]=n;s.tpl=null;renderSheet();
   },
   rday:function(v){var a=UI.sheet.recur_days,i=a.indexOf(+v);if(i>=0)a.splice(i,1);else a.push(+v);renderSheet();},
   hday:function(v){var a=UI.sheet.days,i=a.indexOf(+v);if(i>=0)a.splice(i,1);else a.push(+v);renderSheet();},
   saveTpl:async function(){var s=UI.sheet,n=prompt('Название шаблона, например «Стирка»');if(!n||!n.trim())return;
-    var data={off:s.due_date?diff(s.due_date,T()):null,due_time:s.due_time,remind_every:s.remind_every,remind_times:s.remind_times,recur:s.recur,recur_n:s.recur_n,recur_days:s.recur_days,prio:s.prio,list_id:s.list_id};
+    var data={off:s.due_date?diff(s.due_date,T()):null,due_time:s.due_time,remind_every:s.remind_every,remind_times:s.remind_times,remind_at:s.remind_at||[],recur:s.recur,recur_n:s.recur_n,recur_days:s.recur_days,rule:s.rule||{},prio:s.prio,list_id:s.list_id};
     try{var r=await q(sb.from('templates').insert({name:n.trim().slice(0,40),data:data}).select().single());D.templates.push(r);s.tpl='u:'+r.id;renderSheet();toast('Шаблон сохранён');}catch(e){err(e);}},
   tplDel:async function(v,id){try{await q(sb.from('templates').delete().eq('id',id));D.templates=D.templates.filter(function(x){return x.id!==id;});renderSheet();toast('Шаблон удалён');}catch(e){err(e);}},
-  close:function(){closeSheet();},
-  ovClose:function(v,id,el,e){if(e.target===el)closeSheet();},
+  close:function(){userClose();},
+  ovClose:function(v,id,el,e){if(e.target===el)userClose();},
+  draftClear:function(){clearDraft();UI.sheet=null;openAdd('');},
+  remAtDel:function(v){UI.sheet.remind_at=(UI.sheet.remind_at||[]).filter(function(x){return x!==v;});renderSheet();},
+  rwd:function(v){var a=UI.sheet.rule.days=UI.sheet.rule.days||[],i=a.indexOf(+v);if(i>=0)a.splice(i,1);else a.push(+v);renderSheet();},
   undo:function(){if(undoFn){var f=undoFn;undoFn=null;document.getElementById('toast').classList.remove('show');f();}},
   /* календарь */
   calMode:function(v){UI.cal=v;render();},
@@ -785,7 +886,7 @@ var A={
   calPick:function(v){UI.calDay=v;render();},
   calPickDay:function(v){UI.calDay=v;UI.cal='day';render();},
   /* привычки */
-  habNew:function(){UI.sheet={type:'habit-edit',name:'',icon:'book',color:COLORS[D.habits.length%COLORS.length],target:1,dmode:'all',days:[],remind:'09:00'};renderSheet(true);},
+  habNew:function(){UI.sheet={type:'habit-edit',name:'',icon:'book',color:COLORS[D.habits.length%COLORS.length],target:1,dmode:'all',days:[],remind:'09:00',remind_every:0};renderSheet(true);},
   habOpen:function(v,id){UI.sheet={type:'habit',id:id,off:0};renderSheet(true);},
   habTap:async function(v,id){var h=findHabit(id),t=T();if(h.paused||!sched(h,t)){A.habOpen(v,id);return;}
     var c=cnt(h,t);if(c>=tgt(h)){await setMark(h,t,0);toast('Отметка снята: '+h.name,function(){setMark(h,t,c);});}
@@ -796,11 +897,11 @@ var A={
   hwk:function(v){var n=(UI.sheet.off||0)+(+v);if(n>0)return;UI.sheet.off=n;renderSheet();},
   habPause:async function(v,id){var h=findHabit(id);h.paused=!h.paused;renderSheet();render();try{await q(sb.from('habits').update({paused:h.paused}).eq('id',id));}catch(e){err(e);}},
   habFinish:async function(v,id){var h=findHabit(id);if(!confirm('Завершить привычку «'+h.name+'»? Она уйдёт из списка, отметки останутся в дневнике.'))return;h.finished=true;closeSheet();render();try{await q(sb.from('habits').update({finished:true}).eq('id',id));}catch(e){err(e);}},
-  habEdit:function(v,id){var h=findHabit(id),ds=h.days||[],wk=ds.length===5&&ds.indexOf(5)<0&&ds.indexOf(6)<0;UI.sheet={type:'habit-edit',id:id,name:h.name,icon:h.icon,color:h.color,target:h.target,dmode:!ds.length?'all':wk?'wk':'pick',days:ds.slice(),remind:h.remind};renderSheet(true);},
+  habEdit:function(v,id){var h=findHabit(id),ds=h.days||[],wk=ds.length===5&&ds.indexOf(5)<0&&ds.indexOf(6)<0;UI.sheet={type:'habit-edit',id:id,name:h.name,icon:h.icon,color:h.color,target:h.target,dmode:!ds.length?'all':wk?'wk':'pick',days:ds.slice(),remind:h.remind,remind_every:h.remind_every||0};renderSheet(true);},
   habDel:async function(v,id){if(!confirm('Удалить привычку вместе со всеми отметками?'))return;D.habits=D.habits.filter(function(h){return h.id!==id;});closeSheet();render();try{await q(sb.from('habits').delete().eq('id',id));toast('Привычка удалена');}catch(e){err(e);}},
   saveHabit:async function(){var s=UI.sheet;if(!s.name||!s.name.trim()){toast('Напиши название');return;}
     var days=s.dmode==='all'?[]:s.dmode==='wk'?[0,1,2,3,4]:s.days.slice().sort();if(s.dmode==='pick'&&!days.length){toast('Выбери хотя бы один день');return;}
-    var f={name:s.name.trim(),icon:s.icon,color:s.color,target:+s.target||1,days:days,remind:s.remind||null};closeSheet();
+    var f={name:s.name.trim(),icon:s.icon,color:s.color,target:+s.target||1,days:days,remind:s.remind||null,remind_every:s.remind?(+s.remind_every||0):0};closeSheet();
     try{if(s.id){var r=await q(sb.from('habits').update(f).eq('id',s.id).select().single());Object.assign(findHabit(s.id),r);}else{var n=await q(sb.from('habits').insert(f).select().single());D.habits.push(n);}render();toast(s.id?'Сохранено':'Привычка создана');}catch(e){err(e);}},
   /* списки */
   lists:function(){UI.sheet={type:'lists'};renderSheet(true);},
@@ -894,7 +995,7 @@ document.addEventListener('click',function(e){
   if(lpFired&&(a==='habTap'||a==='open'||a==='chk')){lpFired=false;return;}
   if(A[a]){if(el.tagName==='BUTTON'&&el.type==='submit')e.preventDefault();A[a](el.getAttribute('data-v'),el.getAttribute('data-id'),el,e);}
 });
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(UI.sheet)closeSheet();else if(UI.noteId)closeNote();else if(UI.sel){UI.sel=null;render();}}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(UI.sheet)userClose();else if(UI.noteId)closeNote();else if(UI.sel){UI.sel=null;render();}}});
 
 /* =================== Запуск =================== */
 var starting=false;

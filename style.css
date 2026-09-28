@@ -297,3 +297,10 @@ body.pc .composer{bottom:16px}
 .composer textarea{flex:1;border:0;background:transparent;outline:none;resize:none;font-size:15px;line-height:1.45;padding:8px 6px;max-height:160px}
 .composer .btn{height:42px;width:42px;padding:0;border-radius:12px;flex-shrink:0}
 .fchip[disabled]{opacity:.5}
+
+/* ===== Время текстом и свой повтор ===== */
+.chip.tinw{padding:0 4px;cursor:text}
+.tin{width:118px;height:100%;border:0;background:transparent;outline:none;font-size:14px;text-align:center;color:var(--ink)}
+.tin::placeholder{color:var(--muted)}
+.chip.tinw:focus-within{border-color:var(--ink)}
+.rulebox{display:flex;flex-direction:column;gap:14px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surf)}
