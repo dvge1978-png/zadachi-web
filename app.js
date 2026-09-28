@@ -199,7 +199,7 @@ function recurText(t){
   return'';
 }
 var RECUR=[['none','Не повторять'],['hourly','Каждый час'],['daily','Каждый день'],['weekdays','По будням'],['days','По дням недели'],['everyN','Каждые N дней'],['weekly','Каждую неделю'],['monthly','Каждый месяц']];
-function remindAll(t){var a=t.due_time?remindText(t.remind_every,t.remind_times):'';var x=(t.remind_at||[]).slice().sort();if(x.length)a=(a?a+'; ':'')+'ещё в '+x.join(', ');return a||'Нет';}
+function remindAll(t){var x=(t.remind_at||[]).slice().sort();if(!t.due_date)return x.length?'Каждый день в '+x.join(', ')+', пока не выполню':'Нет';var a=t.due_time?remindText(t.remind_every,t.remind_times):'';if(x.length)a=(a?a+'; ':'')+'ещё в '+x.join(', ');return a||'Нет';}
 function remindText(e,n){if(!e)return'Одно напоминание';if(!n)return'Каждые '+e+' мин, пока не выполню';return n+' '+plural(n,'раз','раза','раз')+' с шагом '+e+' мин';}
 function nextOcc(t){
   var today=T(),d=t.due_date,tm=t.due_time,r=t.recur,guard=0;
@@ -401,7 +401,7 @@ function taskRow(t,g){
   var l=listOf(t);if(l&&UI.filter==='all')m.push('<span><i class="dot" style="--c:'+esc(l.color)+'"></i>'+esc(l.name)+'</span>');
   if(t.subs&&t.subs.length)m.push('<span>'+I('list')+t.subs.filter(function(s){return s.done;}).length+'/'+t.subs.length+'</span>');
   if(t.recur!=='none')m.push('<span>'+I('repeat')+esc(recurText(t))+'</span>');
-  if(t.remind_every&&!t.done&&t.due_time)m.push('<span aria-label="Напоминания">'+I('bell')+'</span>');
+  if(((t.remind_every&&t.due_time)||(t.remind_at&&t.remind_at.length))&&!t.done)m.push('<span aria-label="Напоминания">'+I('bell')+'</span>');
   if(t.owner!==ME)m.push('<span>'+I('users')+'от '+esc(pname(t.owner))+'</span>');
   if(t.assignee&&t.assignee!==ME)m.push('<span>'+I('send')+esc(pname(t.assignee))+' · '+(t.status==='pending'?'ждёт':t.status==='declined'?'отклонено':t.done?'сделано':'принято')+'</span>');
   if(t.done&&t.done_by&&t.done_by!==ME)m.push('<span>сделал(а) '+esc(pname(t.done_by))+'</span>');
@@ -648,7 +648,7 @@ function bindMain(){
 /* =================== Карточка задачи =================== */
 function detailHead(t){return '<div class="hd"><h3>'+(t.done?'Выполнено':t.status==='pending'&&t.assignee===ME?'Прислали тебе':'Задача')+'</h3><button class="iconbtn" data-a="closeDetail" aria-label="Закрыть">'+I('x')+'</button></div>';}
 function taskDetail(t){
-  var l=listOf(t),rows=[['clock','Когда',t.due_date?dayWord(t.due_date)+(t.due_time?', '+t.due_time:''):'Без срока'],['bell','Напоминания',t.due_date?remindAll(t):'Нет'],['repeat','Повтор',t.recur==='none'?'Не повторять':cap(recurText(t))],['list','Список',l?l.name:'Без списка'],['flag','Приоритет',['Обычный','Важно','Очень важно','Срочно'][t.prio||0]]];
+  var l=listOf(t),rows=[['clock','Когда',t.due_date?dayWord(t.due_date)+(t.due_time?', '+t.due_time:''):'Без срока'],['bell','Напоминания',remindAll(t)],['repeat','Повтор',t.recur==='none'?'Не повторять':cap(recurText(t))],['list','Список',l?l.name:'Без списка'],['flag','Приоритет',['Обычный','Важно','Очень важно','Срочно'][t.prio||0]]];
   if(t.owner!==ME)rows.push(['users','От кого',pname(t.owner)]);
   if(t.assignee&&t.assignee!==ME)rows.push(['send','Кому',pname(t.assignee)+' · '+(t.status==='pending'?'ждёт ответа':t.status==='declined'?'отклонено':'принято')]);
   var subs=t.subs||[];
@@ -713,11 +713,12 @@ function recurBlock(d){
   h+='<div class="gh" style="margin-top:0"><b>Итого:</b> '+esc(ruleText(r,d.due_date))+'</div></div>';
   return h;
 }
+function remAtBlock(d,label,hint){return '<div><div class="gl">'+label+'</div><div class="chips">'+(d.remind_at||[]).slice().sort().map(function(x){return '<button class="chip on" data-a="remAtDel" data-v="'+x+'" aria-label="Убрать напоминание в '+x+'">'+x+' '+I('x')+'</button>';}).join('')+timeField('remind_add','','добавить: 7:00')+'</div><div class="gh">'+hint+'</div></div>';}
 function taskForm(d){
   var t=T(),h='';
   if(d._draft)h+='<div class="sum" style="border-style:dashed;flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><span>Черновик восстановлен</span><button class="link" data-a="draftClear">Начать заново</button></div>';
   h+='<input class="fld" id="d-title" placeholder="Что нужно сделать" aria-label="Название" value="'+esc(d.title)+'">';
-  var rem=d.due_date?remindAll(d):'';
+  var rem=remindAll(d);
   h+='<div class="sum"><b>'+(d.due_date?dayWord(d.due_date)+(d.due_time?' в '+d.due_time:''):'Без срока')+'</b>'+(rem&&rem!=='Нет'?'<span>'+esc(rem)+'</span>':'')+(d.recur!=='none'&&d.due_date?'<span>Повтор: '+esc(recurText(d))+'</span>':'')+'</div>';
   if(!d.id&&SET.showTpl!==false)h+=chips('Шаблон',BUILTIN.concat(D.templates.map(function(x){return['u:'+x.id,'★ '+esc(x.name)];})),d.tpl,'tpl');
   h+=chips('Список',[['','Без списка']].concat(D.lists.map(function(l){return[l.id,'<i class="dot" style="--c:'+esc(l.color)+'"></i>'+esc(l.name)];})),d.list_id||'','list_id','','<button class="chip" data-a="listNew">'+I('plus')+'Новый</button>');
@@ -730,8 +731,10 @@ function taskForm(d){
       h+=chips('Повторять напоминание',[0,5,10,15,30,60].map(function(x){return[x,x?x+' мин':'Нет'];}),d.remind_every,'remind_every','',customChip('remind_every',d.remind_every,[0,5,10,15,30,60],'мин'));
       if(d.remind_every)h+=chips('Сколько раз',[2,3,5,10,0].map(function(x){return[x,x?x+' '+plural(x,'раз','раза','раз'):'Пока не выполню'];}),d.remind_times,'remind_times','С '+SET.quiet.from+' до '+SET.quiet.to+' повторы не приходят. Меняется в настройках.',customChip('remind_times',d.remind_times,[2,3,5,10,0],'раз'));
     }
-    h+='<div><div class="gl">Ещё напомнить в</div><div class="chips">'+(d.remind_at||[]).slice().sort().map(function(x){return '<button class="chip on" data-a="remAtDel" data-v="'+x+'" aria-label="Убрать напоминание в '+x+'">'+x+' '+I('x')+'</button>';}).join('')+timeField('remind_add','','добавить: 7:00')+'</div><div class="gh">Впиши время и нажми Enter. Например, 7, 8 и 9, чтобы напомнить три раза утром.</div></div>';
+    h+=remAtBlock(d,'Ещё напомнить в','Впиши время и нажми Enter. Например, 7, 8 и 9, чтобы напомнить три раза утром.');
     h+=recurBlock(d);
+  }else{
+    h+=remAtBlock(d,'Напоминать каждый день в','Без срока, но с напоминаниями: будут приходить каждый день в эти часы, пока не отметишь задачу выполненной.');
   }
   h+='<label><div class="gl">Описание</div><textarea class="fld" id="d-details" placeholder="Подробности, ссылки, адрес" aria-label="Описание">'+esc(d.details||'')+'</textarea></label>';
   if(!d.id)h+='<button class="btn2" data-a="saveTpl">'+I('star')+'Сохранить настройки как свой шаблон</button>';
@@ -744,8 +747,9 @@ function habitForm(d){
   h+=chips('Сколько раз в день',[1,2,3,4,5,8,10].map(function(x){return[x,x+' '+plural(x,'раз','раза','раз')];}),d.target,'target','',customChip('target',d.target,[1,2,3,4,5,8,10],'раз'));
   h+=chips('Дни',[['all','Каждый день'],['wk','По будням'],['pick','Выбрать']],d.dmode,'dmode');
   if(d.dmode==='pick')h+=wdChips(d.days,'hday','Какие дни');
-  h+=timeChoice('Напоминание','remind',d.remind,['08:00','09:00','12:00','15:00','20:00','21:00'],'Нет','Можно вписать своё: 7, 730 или 7:30');
-  if(d.remind)h+=chips('Повторять, пока не отмечу',[0,15,30,60,120].map(function(x){return[x,x?(x<60?x+' мин':(x/60)+' ч'):'Нет'];}),+d.remind_every||0,'remind_every','После первого напоминания будет напоминать снова через это время, пока не отметишь. В тихие часы не беспокоит.',customChip('remind_every',+d.remind_every||0,[0,15,30,60,120],'мин'));
+  var ht=(d.times||[]).slice().sort(),pre=['08:00','09:00','12:00','15:00','20:00','21:00'];
+  h+='<div><div class="gl">Напоминать в</div><div class="chips">'+pre.concat(ht.filter(function(x){return pre.indexOf(x)<0;})).sort().map(function(x){var on=ht.indexOf(x)>=0;return '<button class="chip'+(on?' on':'')+'" data-a="htime" data-v="'+x+'" aria-pressed="'+on+'">'+x+'</button>';}).join('')+timeField('h_add','','своё: 7:30')+'</div><div class="gh">Можно несколько. Если делать нужно несколько раз в день (например, таблетки 3 раза), поставь «Сколько раз в день» 3 и три времени: к каждому придёт напоминание, только если ты ещё не отметил нужное количество.</div></div>';
+  if(ht.length)h+=chips('Повторять, пока не отмечу',[0,15,30,60,120].map(function(x){return[x,x?(x<60?x+' мин':(x/60)+' ч'):'Нет'];}),+d.remind_every||0,'remind_every','После первого напоминания будет напоминать снова через это время, пока не отметишь. В тихие часы не беспокоит.',customChip('remind_every',+d.remind_every||0,[0,15,30,60,120],'мин'));
   return h;
 }
 function habitDetail(hb,off){
@@ -755,7 +759,7 @@ function habitDetail(hb,off){
   h+='<div style="--hc:'+esc(hb.color)+'"><div class="calnav" style="margin:0 0 10px"><button class="iconbtn" data-a="hwk" data-v="-7" aria-label="Прошлая неделя">'+I('left')+'</button><b>'+fmt(addDays(mon,3),{month:'long'})+'</b><button class="iconbtn" data-a="hwk" data-v="7" aria-label="Следующая неделя"'+(off>=0?' disabled style="opacity:.3"':'')+'>'+I('right')+'</button></div><div class="hweek">';
   for(var i=0;i<7;i++){var k=addDays(mon,i);h+='<div><small>'+WD[i]+'</small><button class="'+(hDone(hb,k)?'on ':'')+(k===t?'t ':'')+(sched(hb,k)?'':'skip')+'" data-a="habDay" data-id="'+hb.id+'" data-v="'+k+'"'+(k>t?' disabled':'')+' aria-label="'+fmtLong(k)+'">'+fromKey(k).getDate()+'</button></div>';}
   h+='</div></div><div class="stats"><div><b>'+streak(hb)+'</b><small>подряд</small></div><div><b>'+pct(hb)+'%</b><small>выполнение</small></div><div><b>'+totalDone(hb)+'</b><small>всего</small></div></div>';
-  h+='<div class="fields"><div class="fr">'+I('bell')+'<span>Напоминание</span><b style="font-weight:500">'+(hb.remind?hb.remind+(hb.remind_every?', потом каждые '+hb.remind_every+' мин':''):'нет')+'</b></div><div class="fr">'+I('cal')+'<span>Дни</span><b style="font-weight:500">'+daysText(hb)+'</b></div><div class="fr">'+I('star')+'<span>В день</span><b style="font-weight:500">'+tgt(hb)+' '+plural(tgt(hb),'раз','раза','раз')+'</b></div></div>';
+  h+='<div class="fields"><div class="fr">'+I('bell')+'<span>Напоминание</span><b style="font-weight:500">'+(hb.remind?[hb.remind].concat(hb.remind_at||[]).join(', ')+(hb.remind_every?', потом каждые '+hb.remind_every+' мин':''):'нет')+'</b></div><div class="fr">'+I('cal')+'<span>Дни</span><b style="font-weight:500">'+daysText(hb)+'</b></div><div class="fr">'+I('star')+'<span>В день</span><b style="font-weight:500">'+tgt(hb)+' '+plural(tgt(hb),'раз','раза','раз')+'</b></div></div>';
   return h;
 }
 function listForm(d){
@@ -838,10 +842,11 @@ function bindSheet(){
       if(k==='due_time'){s.due_time=v;s.tpl=null;}
       else if(k==='remind_add'){s.remind_at=(s.remind_at||[]).filter(function(x){return x!==v;}).concat([v]).sort();}
       else if(k==='remind'){s.remind=v;}
+      else if(k==='h_add'){s.times=(s.times||[]).filter(function(x){return x!==v;}).concat([v]).sort();}
       else if(k==='q_from'||k==='q_to'){SET.quiet[k==='q_from'?'from':'to']=v;saveSettings();}
       else if(k==='h_from'||k==='h_to'){SET.hours[k==='h_from'?'from':'to']=v;saveSettings();}
       else if(k==='def_at'){SET.def.at=v;SET.def.time='fixed';saveSettings();}
-      renderSheet();var nx=document.querySelector('#sheet input[data-tin="'+k+'"]');if(nx&&k==='remind_add')nx.focus();}
+      renderSheet();var nx=document.querySelector('#sheet input[data-tin="'+k+'"]');if(nx&&(k==='remind_add'||k==='h_add'))nx.focus();}
     el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();apply();}});
     el.addEventListener('change',apply);
   });
@@ -910,7 +915,7 @@ var A={
     var s=UI.sheet;if(!s.title||!s.title.trim()){toast('Напиши, что нужно сделать');return;}
     if(s.due_date&&s.recur==='custom'&&s.rule&&s.rule.unit==='week'&&!(s.rule.days&&s.rule.days.length)){toast('Выбери хотя бы один день недели');return;}
     var rule={};if(s.due_date&&s.recur==='custom'){rule=Object.assign({},s.rule);rule.every=Math.max(1,+rule.every||1);if(rule.unit==='month'&&(rule.mode||'date')==='date')rule.mday=fromKey(s.due_date).getDate();}
-    var f={title:s.title.trim(),details:s.details||'',list_id:s.list_id||null,prio:+s.prio||0,due_date:s.due_date||null,due_time:s.due_date?(s.due_time||null):null,remind_every:s.due_date&&s.due_time?+s.remind_every||0:0,remind_times:+s.remind_times||0,remind_at:s.due_date?(s.remind_at||[]):[],recur:s.due_date?s.recur:'none',recur_n:+s.recur_n||2,recur_days:s.recur_days||[],rule:rule};
+    var f={title:s.title.trim(),details:s.details||'',list_id:s.list_id||null,prio:+s.prio||0,due_date:s.due_date||null,due_time:s.due_date?(s.due_time||null):null,remind_every:s.due_date&&s.due_time?+s.remind_every||0:0,remind_times:+s.remind_times||0,remind_at:s.remind_at||[],recur:s.due_date?s.recur:'none',recur_n:+s.recur_n||2,recur_days:s.recur_days||[],rule:rule};
     if(!s.id)clearDraft();
     closeSheet();
     if(s.id){await patchTask(s.id,f);toast('Сохранено');}
@@ -961,7 +966,7 @@ var A={
   calPick:function(v){UI.calDay=v;render();},
   calPickDay:function(v){UI.calDay=v;UI.cal='day';render();},
   /* привычки */
-  habNew:function(){UI.sheet={type:'habit-edit',name:'',icon:'book',color:COLORS[D.habits.length%COLORS.length],target:1,dmode:'all',days:[],remind:'09:00',remind_every:0};renderSheet(true);},
+  habNew:function(){UI.sheet={type:'habit-edit',name:'',icon:'book',color:COLORS[D.habits.length%COLORS.length],target:1,dmode:'all',days:[],remind:'09:00',times:['09:00'],remind_every:0};renderSheet(true);},
   habOpen:function(v,id){UI.sheet={type:'habit',id:id,off:0};renderSheet(true);},
   habTap:async function(v,id){var h=findHabit(id),t=T();if(h.paused||!sched(h,t)){A.habOpen(v,id);return;}
     var c=cnt(h,t);if(c>=tgt(h)){await setMark(h,t,0);toast('Отметка снята: '+h.name,function(){setMark(h,t,c);});}
@@ -972,11 +977,11 @@ var A={
   hwk:function(v){var n=(UI.sheet.off||0)+(+v);if(n>0)return;UI.sheet.off=n;renderSheet();},
   habPause:async function(v,id){var h=findHabit(id);h.paused=!h.paused;renderSheet();render();try{await q(sb.from('habits').update({paused:h.paused}).eq('id',id));}catch(e){err(e);}},
   habFinish:async function(v,id){var h=findHabit(id);if(!confirm('Завершить привычку «'+h.name+'»? Она уйдёт из списка, отметки останутся в дневнике.'))return;h.finished=true;closeSheet();render();try{await q(sb.from('habits').update({finished:true}).eq('id',id));}catch(e){err(e);}},
-  habEdit:function(v,id){var h=findHabit(id),ds=h.days||[],wk=ds.length===5&&ds.indexOf(5)<0&&ds.indexOf(6)<0;UI.sheet={type:'habit-edit',id:id,name:h.name,icon:h.icon,color:h.color,target:h.target,dmode:!ds.length?'all':wk?'wk':'pick',days:ds.slice(),remind:h.remind,remind_every:h.remind_every||0};renderSheet(true);},
+  habEdit:function(v,id){var h=findHabit(id),ds=h.days||[],wk=ds.length===5&&ds.indexOf(5)<0&&ds.indexOf(6)<0;UI.sheet={type:'habit-edit',id:id,name:h.name,icon:h.icon,color:h.color,target:h.target,dmode:!ds.length?'all':wk?'wk':'pick',days:ds.slice(),remind:h.remind,times:[h.remind].concat(h.remind_at||[]).filter(Boolean),remind_every:h.remind_every||0};renderSheet(true);},
   habDel:async function(v,id){if(!confirm('Удалить привычку вместе со всеми отметками?'))return;D.habits=D.habits.filter(function(h){return h.id!==id;});closeSheet();render();try{await q(sb.from('habits').delete().eq('id',id));toast('Привычка удалена');}catch(e){err(e);}},
   saveHabit:async function(){var s=UI.sheet;if(!s.name||!s.name.trim()){toast('Напиши название');return;}
     var days=s.dmode==='all'?[]:s.dmode==='wk'?[0,1,2,3,4]:s.days.slice().sort();if(s.dmode==='pick'&&!days.length){toast('Выбери хотя бы один день');return;}
-    var f={name:s.name.trim(),icon:s.icon,color:s.color,target:+s.target||1,days:days,remind:s.remind||null,remind_every:s.remind?(+s.remind_every||0):0};closeSheet();
+    var tms=(s.times||[]).slice().sort();var f={name:s.name.trim(),icon:s.icon,color:s.color,target:+s.target||1,days:days,remind:tms[0]||null,remind_at:tms.slice(1),remind_every:tms.length?(+s.remind_every||0):0};closeSheet();
     try{if(s.id){var r=await q(sb.from('habits').update(f).eq('id',s.id).select().single());Object.assign(findHabit(s.id),r);}else{var n=await q(sb.from('habits').insert(f).select().single());D.habits.push(n);}render();toast(s.id?'Сохранено':'Привычка создана');}catch(e){err(e);}},
   /* списки */
   lists:function(){UI.sheet={type:'lists'};renderSheet(true);},
@@ -1021,6 +1026,7 @@ var A={
     if(a.length<8){e.textContent='Нужно минимум 8 символов';return;}if(a!==b){e.textContent='Пароли не совпадают';return;}
     el.disabled=true;try{await q(sb.auth.updateUser({password:a}));closeSheet();toast('Пароль изменён');}catch(x){e.textContent=/same/i.test(x.message)?'Новый пароль совпадает со старым':x.message;el.disabled=false;}},
   mic:function(v){startVoice(v);},
+  htime:function(v){var a=UI.sheet.times=UI.sheet.times||[],i=a.indexOf(v);if(i>=0)a.splice(i,1);else a.push(v);a.sort();renderSheet();},
   asOn:function(){SET.assistant=true;saveSettings();render();},
   asClear:function(){if(!confirm('Очистить переписку с помощником?'))return;AS.msgs=[];asSave();render();},
   asPlan:function(){askAssistant('plan','План на сегодня');},
