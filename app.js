@@ -3,6 +3,7 @@
 /* =================== Подключение =================== */
 var SUPA_URL='https://rmmmyaozvtknmypavyso.supabase.co';
 var FN_NAME='hyper-function';
+var PUSH_URL='https://rmmmyaozvtknmypavyso.supabase.co/functions/v1/push';
 var SUPA_KEY='sb_publishable_wbMmm1XAfMY5Ckr1zHwt0Q_VTvyHrUz';
 var HASH=location.hash||'';
 var FROM_INVITE=/type=invite/.test(HASH)||/type=signup/.test(HASH);
@@ -290,6 +291,54 @@ async function setMark(h,day,val){
   return before;
 }
 function daysText(h){if(!h.days||!h.days.length)return'каждый день';if(h.days.length===5&&h.days.indexOf(5)<0&&h.days.indexOf(6)<0)return'по будням';return h.days.slice().sort().map(function(i){return WD[i];}).join(', ');}
+
+/* =================== Уведомления =================== */
+var PUSH={state:'?'};
+function isIOS(){return /iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+function isStandalone(){return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;}
+function urlB64(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+async function pushCheck(){
+  try{
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){PUSH.state=isIOS()&&!isStandalone()?'ios-install':'unsupported';return;}
+    if(Notification.permission==='denied'){PUSH.state='denied';return;}
+    var reg=await navigator.serviceWorker.getRegistration();var sub=reg&&await reg.pushManager.getSubscription();PUSH.state=sub?'on':'off';
+  }catch(e){PUSH.state='unsupported';}
+}
+function pushBlock(){
+  var st=PUSH.state,txt={on:'Включены на этом устройстве.',off:'На этом устройстве выключены.',denied:'Уведомления запрещены в настройках браузера или телефона. Разреши их для этого сайта и обнови страницу.','ios-install':'На iPhone уведомления работают, только если сайт добавлен на экран «Домой»: в Safari «Поделиться» → «На экран „Домой“», потом открой сайт с этой иконки и включи уведомления здесь.',unsupported:'Этот браузер не поддерживает уведомления.','?':'Проверяю…'}[st]||'';
+  var h='<div class="rulebox"><div class="gl" style="margin:0;font-size:15px;color:var(--ink)">Уведомления</div><div style="font-size:14px;line-height:1.45">'+txt+'</div>';
+  if(st==='off')h+='<button class="btn" data-a="pushOn">'+I('bell')+'Включить на этом устройстве</button>';
+  if(st==='on')h+='<div class="row2"><button class="btn2" data-a="pushTest">'+I('bell')+'Проверить</button><button class="btn2 warn" data-a="pushOff">Выключить здесь</button></div>';
+  return h+'<div class="gh" style="margin:0">Включи на каждом устройстве отдельно: на телефоне и на компьютере.</div></div>';
+}
+async function pushEnable(){
+  try{
+    var perm=await Notification.requestPermission();
+    if(perm!=='granted'){toast('Без разрешения уведомления не придут');await pushCheck();renderSheet();return;}
+    var reg=await navigator.serviceWorker.register('sw.js');await navigator.serviceWorker.ready;
+    var r=await fetch(PUSH_URL+'?action=vapid',{headers:{apikey:SUPA_KEY}});var j=await r.json();if(!j.publicKey)throw new Error(j.error||'функция push не ответила');
+    var sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(j.publicKey)});
+    var k=sub.toJSON();
+    await q(sb.from('push_subs').upsert({user_id:ME,endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth,ua:navigator.userAgent.slice(0,200)},{onConflict:'endpoint'}));
+    toast('Уведомления включены');
+  }catch(e){err(e);}
+  await pushCheck();renderSheet();
+}
+async function pushDisable(){
+  try{var reg=await navigator.serviceWorker.getRegistration();var sub=reg&&await reg.pushManager.getSubscription();
+    if(sub){await q(sb.from('push_subs').delete().eq('endpoint',sub.endpoint));await sub.unsubscribe();}toast('Уведомления на этом устройстве выключены');}catch(e){err(e);}
+  await pushCheck();renderSheet();
+}
+async function pushTest(){
+  try{var r=await sb.functions.invoke('push',{body:{action:'test'}});
+    if(r.error){var m=r.error.message;try{var j=await r.error.context.json();if(j&&j.error)m=j.error;}catch(x){}throw new Error(m);}
+    toast('Отправлено на устройств: '+(r.data.delivered||0)+' из '+(r.data.devices||0));
+  }catch(e){err(e);}
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+  navigator.serviceWorker.addEventListener('message',function(e){if(e.data&&e.data.open&&ME&&findTask(e.data.open))openTask(e.data.open);});
+}
 
 /* =================== Тост =================== */
 var undoFn=null,toastT=null;
@@ -698,6 +747,7 @@ function listForm(d){
 function settingsForm(){
   var me=prof(ME)||{};
   var h='<label><div class="gl">Имя</div><input class="fld" id="s-name" value="'+esc(me.name||'')+'" aria-label="Имя"></label>';
+  h+=pushBlock();
   h+=chips('Тема',[['light','Светлая «Бумага»'],['dark','Тёмная «Ночь»'],['auto','Как в системе']],SET.theme,'s_theme');
   h+='<div><div class="gl">Акцентный цвет</div>'+colorChips(SET.accent,'s_accent',['#141414','#6A5FE0','#3F7D5C','#C0663B','#4A6FB0','#B0476E','#F2B79E'])+'</div>';
   h+=chips('Вид',[['auto','Авто'],['pc','Для ПК'],['phone','Для телефона']],SET.layout,'s_layout','«Авто» выбирает сам по ширине экрана');
@@ -953,7 +1003,10 @@ var A={
   asAddAll:async function(v){var m=AS.msgs[+v],n=0;for(var i=0;i<m.tasks.length;i++){if(!m.tasks[i]._added&&await asAddTask(+v,i))n++;}toast('Добавлено задач: '+n);},
   asMove:async function(v){var p=v.split(':'),mv=AS.msgs[+p[0]].moves[+p[1]];var f={due_date:/^\d{4}-\d{2}-\d{2}$/.test(mv.due_date||'')?mv.due_date:null};if(!f.due_date){f.due_time=null;f.recur='none';}await patchTask(mv.task_id,f);mv._done=true;asSave();render();toast('Перенесено');},
   noteAsk:function(){var n=findNote(UI.noteId);if(!n)return;if(!SET.assistant){closeNote();UI.view='assistant';render();return;}saveNote(n);closeNote();askAssistant('notes','Разобрать заметку «'+(n.title||'без названия')+'»',n.id);},
-  settings:function(){UI.sheet={type:'settings'};renderSheet(true);},
+  pushOn:function(v,id,el){el.disabled=true;pushEnable();},
+  pushOff:function(){pushDisable();},
+  pushTest:function(){pushTest();},
+  settings:function(){UI.sheet={type:'settings'};renderSheet(true);pushCheck().then(function(){if(UI.sheet&&UI.sheet.type==='settings')renderSheet();});},
   logout:async function(){if(!confirm('Выйти из аккаунта на этом устройстве?'))return;closeSheet();await sb.auth.signOut();location.reload();}
 };
 
@@ -1010,6 +1063,8 @@ async function start2(){
   document.getElementById('app').innerHTML='<div class="loading">Загружаю…</div>';
   try{await loadAll();}catch(e){document.getElementById('app').innerHTML='<div class="loading">Не удалось загрузить данные: '+esc(e.message)+'</div>';return;}
   applyTheme();render();subscribe();
+  try{var tz=Intl.DateTimeFormat().resolvedOptions().timeZone;if(tz&&SET.tz!==tz){SET.tz=tz;saveSettings();}}catch(e){}
+  var pt=new URLSearchParams(location.search).get('task');if(pt){history.replaceState(null,'',location.pathname);if(findTask(pt))openTask(pt);}
 }
 sb.auth.onAuthStateChange(function(ev,session){
   if(ev==='PASSWORD_RECOVERY'){FROM_RECOVERY=true;ME=session&&session.user.id;authScreen('setpass');return;}

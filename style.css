@@ -304,3 +304,5 @@ body.pc .composer{bottom:16px}
 .tin::placeholder{color:var(--muted)}
 .chip.tinw:focus-within{border-color:var(--ink)}
 .rulebox{display:flex;flex-direction:column;gap:14px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surf)}
+/* поля времени внутри «чипа» должны быть видимыми (не как скрытый выбор даты) */
+.chip.tinw input.tin{position:static;inset:auto;opacity:1;width:118px;height:100%;cursor:text}
