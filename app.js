@@ -731,11 +731,13 @@ function applyTpl(d,key){
   else if(key.indexOf('u:')===0){var u=D.templates.filter(function(x){return 'u:'+x.id===key;})[0];if(u){var x=u.data;d.due_date=x.off==null?null:addDays(t,x.off);['due_time','remind_every','remind_times','recur','recur_n','prio','list_id'].forEach(function(f){if(x[f]!==undefined)d[f]=x[f];});d.recur_days=(x.recur_days||[]).slice();d.remind_at=(x.remind_at||[]).slice();d.rule=JSON.parse(JSON.stringify(x.rule||{}));if(d.list_id&&!findList(d.list_id))d.list_id=null;}}
 }
 var RPRE=[['none','Не повторять'],['daily','Каждый день'],['weekdays','По будням'],['weekly','Каждую неделю'],['monthly','Каждый месяц'],['yearly','Каждый год'],['hourly','Каждый час'],['custom','Настроить…']];
+function nextWd(days){var d=T(),g=0;while(days.indexOf(dow(d))<0&&g++<8)d=addDays(d,1);return d;}
 function defRule(d){var w=d.due_date?dow(d.due_date):0;return{unit:'week',every:1,days:[w],mode:'date',nth:1,wd:w,from:'date'};}
 function recurBlock(d){
   var hint='';if(d.recur==='weekly')hint='По дню недели даты: '+WDF[dow(d.due_date)].replace('среду','среда').replace('пятницу','пятница').replace('субботу','суббота');
   else if(d.recur==='monthly')hint=fromKey(d.due_date).getDate()+'-го числа каждого месяца';else if(d.recur==='yearly')hint='Каждый год '+fmtDM(d.due_date);else if(d.recur==='hourly')hint='С '+SET.hours.from+' до '+SET.hours.to+'. Меняется в настройках.';
-  var h=chips('Повтор',RPRE,d.recur,'recur',hint);
+  var h=chips('Повтор',RPRE,d.recur,'recur',d.recur==='weekly'?'':hint);
+  if(d.recur==='weekly')h+=chips('По какому дню',WD.map(function(w,i){return[i,w];}),dow(d.due_date),'wkday','Ближайший раз: '+dayWord(d.due_date).toLowerCase().replace(/\.$/,'')+'. После выполнения задача переедет на следующую неделю.');
   if(d.recur!=='custom')return h;
   var r=d.rule;if(!r||!r.unit){r=d.rule=defRule(d);}var n=Math.max(1,+r.every||1);
   h+='<div class="rulebox">';
@@ -770,6 +772,7 @@ function taskForm(d){
     h+=recurBlock(d);
   }else{
     h+=remAtBlock(d,'Напоминать каждый день в','Без срока, но с напоминаниями: будут приходить каждый день в эти часы, пока не отметишь задачу выполненной.');
+    h+=chips('Повтор',RPRE.filter(function(x){return x[0]!=='hourly';}),'none','recur','Выбери повтор, например «Каждую неделю» → пт, и задача будет появляться в эти дни.');
   }
   h+='<label><div class="gl">Описание</div><textarea class="fld" id="d-details" placeholder="Подробности, ссылки, адрес" aria-label="Описание">'+esc(d.details||'')+'</textarea></label>';
   if(!d.id)h+='<button class="btn2" data-a="saveTpl">'+I('star')+'Сохранить настройки как свой шаблон</button>';
@@ -969,7 +972,8 @@ var A={
     else if(['remind_every','remind_times','recur_n','prio','target'].indexOf(k)>=0){s[k]=+v;s.tpl=null;}
     else if(k==='due_time'){s.due_time=v||null;s.tpl=null;}
     else if(k==='remind'){s.remind=v||null;}
-    else{s[k]=v;if(k==='recur'){s.tpl=null;if(v==='custom'&&!(s.rule&&s.rule.unit))s.rule=defRule(s);}}
+    else if(k==='wkday'){s.due_date=nextWd([+v]);s.tpl=null;}
+    else{if(k==='recur'&&v!=='none'&&!s.due_date){s.due_date=T();s.due_time=null;}s[k]=v;if(k==='recur'){s.tpl=null;if(v==='custom'&&!(s.rule&&s.rule.unit))s.rule=defRule(s);}}
     renderSheet();
   },
   custom:function(v,id,el){
@@ -992,7 +996,7 @@ var A={
   ovClose:function(v,id,el,e){if(e.target===el)userClose();},
   draftClear:function(){clearDraft();UI.sheet=null;openAdd('');},
   remAtDel:function(v){UI.sheet.remind_at=(UI.sheet.remind_at||[]).filter(function(x){return x!==v;});renderSheet();},
-  rwd:function(v){var a=UI.sheet.rule.days=UI.sheet.rule.days||[],i=a.indexOf(+v);if(i>=0)a.splice(i,1);else a.push(+v);renderSheet();},
+  rwd:function(v){var s=UI.sheet,a=s.rule.days=s.rule.days||[],i=a.indexOf(+v);if(i>=0)a.splice(i,1);else a.push(+v);if(a.length&&s.due_date&&a.indexOf(dow(s.due_date))<0&&s.rule.unit==='week')s.due_date=nextWd(a);renderSheet();},
   undo:function(){if(undoFn){var f=undoFn;undoFn=null;document.getElementById('toast').classList.remove('show');f();}},
   /* календарь */
   calMode:function(v){UI.cal=v;render();},
