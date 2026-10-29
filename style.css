@@ -335,3 +335,16 @@ body.pc .composer{bottom:16px}
 .frow .fq{height:36px;padding:0 12px;flex-shrink:0;font-weight:600;font-variant-numeric:tabular-nums}
 .meta .soon{color:var(--warn);font-weight:500}
 .drow .av{width:24px;height:24px;font-size:11px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.aibusy{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px}
+.aibusy svg.i{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+.rcard{border:1px solid var(--line);border-radius:14px;background:var(--surf);padding:14px 16px;margin-top:14px}
+.rcard .rt{font-size:17px;font-weight:600;line-height:1.3}
+.rcard .meta{margin-top:6px}
+.rcard .ru{font-size:14px;line-height:1.45;margin-top:10px;color:var(--ink)}
+.rcard details{margin-top:10px}
+.rcard summary{cursor:pointer;font-weight:600;font-size:14px;padding:6px 0}
+.rcard ol{margin:6px 0 0;padding-left:20px;line-height:1.55;font-size:14px}
+.rcard ol li+li{margin-top:4px}
+.meta .ok{color:var(--ok);font-weight:500}

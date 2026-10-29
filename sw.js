@@ -33,9 +33,10 @@ self.addEventListener('notificationclick', function (e) {
   }
   var url = new URL('./', self.registration.scope);
   if (d.task_id) url.searchParams.set('task', d.task_id);
+  if (d.view) url.searchParams.set('view', d.view);
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
     for (var i = 0; i < cs.length; i++) {
-      if ('focus' in cs[i]) { cs[i].postMessage({ open: d.task_id || null }); return cs[i].focus(); }
+      if ('focus' in cs[i]) { cs[i].postMessage({ open: d.task_id || null, view: d.view || null }); return cs[i].focus(); }
     }
     return self.clients.openWindow(url.href);
   }));

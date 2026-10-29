@@ -33,7 +33,7 @@ var KNOW=[
 function know(name){var n=String(name||'').toLowerCase();for(var i=0;i<KNOW.length;i++)if(KNOW[i][0].test(n))return{cat:KNOW[i][1],shelf:KNOW[i][2],open:KNOW[i][3]};return null;}
 
 /* ---------- состояние ---------- */
-var F={state:'idle',err:'',kitchens:[],kitchen:null,members:[],items:[],shop:[],log:[],prefs:{},tab:'items',place:'all',q:'',quick:''};
+var F={state:'idle',err:'',kitchens:[],kitchen:null,members:[],items:[],shop:[],log:[],prefs:{},tab:'items',place:'all',q:'',quick:'',aiBusy:'',rec:{minutes:30,servings:2,wish:'',busy:false,list:[],reply:'',kid:null}};
 function rr(){if(C.UI.view==='fridge'||(C.UI.sheet&&String(C.UI.sheet.type).indexOf('fr-')===0))C.render();}
 function isMissing(e){var m=String((e&&e.message)||'')+' '+String((e&&e.code)||'');return /does not exist|PGRST205|42P01|Could not find the table|schema cache/i.test(m);}
 function norm(s){return String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
@@ -42,6 +42,7 @@ function places(){var p=kset().places;return p&&p.length?p:DEF_PLACES.slice();}
 function appliances(){var a=kset().appliances;return a?a:DEF_APPL.slice();}
 function myPrefs(){return F.prefs[C.ME]||{user_id:C.ME,dislikes:'',allergies:'',settings:{}};}
 function pset(){return myPrefs().settings||{};}
+function aiOn(){return pset().ai===true;}
 function warnDays(){var w=pset().warn;return w==null?2:+w;}
 function num(x){var n=Math.round(x*1000)/1000;return String(n).replace('.',',');}
 function pickKey(){return 'fridge-kitchen-'+C.ME;}
@@ -200,7 +201,8 @@ async function addFromText(text,fromVoice){
   for(var i=0;i<list.length;i++){var r=await addItem(list[i],true);if(r){names.push(r.name);if(list[i]._est)est=true;}}
   rr();if(names.length)toast('Добавлено: '+names.join(', ')+(est?'. Срок примерный, можно поправить':''));
 }
-async function voice(t){
+async function voice(t,local){
+  if(!local&&aiOn()&&F.kitchen)return aiParse(t,[]);
   var s=t.trim(),m,it;
   if((m=s.match(/^(?:я\s+)?(?:выкинул[аи]?|выкинули|выбросил[аи]?|выбросили)\s+(.+)/i))){it=findItem(m[1]);if(!it)return toast('Не нашёл «'+m[1]+'» в холодильнике');return finish(it,'toss');}
   if((m=s.match(/^(.+?)\s+(?:закончил(?:ся|ась|ось|ись)|кончил(?:ся|ась|ось|ись))$/i))||(m=s.match(/^(?:закончил(?:ся|ась|ось|ись)|кончил(?:ся|ась|ось|ись))\s+(.+)/i))){it=findItem(m[1]);if(!it)return toast('Не нашёл «'+m[1]+'» в холодильнике');return finish(it,'finish');}
@@ -220,6 +222,63 @@ async function voice(t){
   return addFromText(s,true);
 }
 
+/* ---------- ИИ холодильника ---------- */
+async function ai(body){
+  var r=await sb.functions.invoke('fridge',{body:Object.assign({kitchen_id:F.kitchen.id,today:T()},body)});
+  if(r.error){var m=r.error.message||'';try{var j=await r.error.context.json();if(j&&j.error)m=j.error;}catch(x){}
+    if(/Failed to send|fetch|NetworkError/i.test(m))m='нет связи с функцией fridge';throw new Error(m);}
+  return r.data||{};
+}
+function loadImage(file){return new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(){var img=new Image();img.onload=function(){res(img);};img.onerror=function(){rej(new Error('Не удалось открыть картинку'));};img.src=fr.result;};fr.onerror=function(){rej(new Error('Не удалось прочитать файл'));};fr.readAsDataURL(file);});}
+function tile(img,sy,sh){var w=img.naturalWidth,k=Math.min(1,1568/Math.max(w,sh));var c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(sh*k));c.getContext('2d').drawImage(img,0,sy,w,sh,0,0,c.width,c.height);return{media_type:'image/jpeg',data:c.toDataURL('image/jpeg',0.85).split(',')[1]};}
+async function prepareImages(files){
+  var out=[];for(var i=0;i<files.length&&out.length<6;i++){var img=await loadImage(files[i]);var w=img.naturalWidth,h=img.naturalHeight;
+    if(h>w*2.2){var th=Math.round(w*2);for(var y=0;y<h&&out.length<6;y+=th-Math.round(w*0.15)){out.push(tile(img,y,Math.min(th,h-y)));if(y+th>=h)break;}} // длинный скрин режем на части с нахлёстом
+    else out.push(tile(img,0,h));}
+  return out;
+}
+function needAi(){if(aiOn())return false;C.UI.sheet={type:'fr-aion'};C.renderSheet(true);return true;}
+async function aiParse(text,images){
+  if(needAi())return;F.aiBusy=images&&images.length?'Распознаю '+(images.length>1?'картинки':'картинку')+'…':'Разбираю…';rr();
+  try{var a=await ai({mode:'parse',text:text||'',images:images||[]});F.aiBusy='';
+    var add=(a.add||[]).map(function(x){x._on=true;if(!x.expires&&x.shelf_days)x.expires=addDays(T(),x.shelf_days),x._est=true;return x;});
+    var ch=(a.change||[]).filter(function(c){return itemById(c.item_id);}).map(function(c){c._on=true;return c;});
+    if(!add.length&&!ch.length){rr();toast(a.reply||'Ничего не нашёл');return;}
+    C.UI.sheet={type:'fr-ai',reply:a.reply||'',add:add,change:ch};C.renderSheet(true);rr();
+  }catch(e){F.aiBusy='';rr();if(text)return voice(text,true);toast('Не получилось: '+e.message);}
+}
+function changeText(c){var it=itemById(c.item_id);if(!it)return '';var n=it.name;
+  if(c.kind==='finish')return n+' — закончилось';if(c.kind==='toss')return n+' — выбросить';if(c.kind==='open')return n+' — открыть';
+  if(c.kind==='state')return n+' — '+(STATE_TXT[c.state]||'целая');
+  if(c.kind==='use')return n+' — взять '+(c.amount!=null?num(c.amount)+' '+it.unit:'немного');return n;}
+async function applyChange(c){var it=itemById(c.item_id);if(!it)return;
+  if(c.kind==='finish')return finish(it,'finish');if(c.kind==='toss')return finish(it,'toss');if(c.kind==='open')return openItem(it);
+  if(c.kind==='state'&&STATES.some(function(x){return x[0]===c.state;}))return setState(it,c.state);
+  if(c.kind==='use'){if(counted(it)&&c.amount!=null)return useAmount(it,+c.amount);if(counted(it))return useAmount(it,stepFor(it.unit)[0]);return setState(it,it.state==='full'?'open':it.state);}}
+function recKey(){return 'fridge-recipes-'+(F.kitchen&&F.kitchen.id);}
+function recLoad(){if(!F.kitchen||F.rec.kid===F.kitchen.id)return;F.rec.kid=F.kitchen.id;try{var o=JSON.parse(localStorage.getItem(recKey())||'null');if(o){F.rec.list=o.list||[];F.rec.reply=o.reply||'';F.rec.at=o.at||null;}}catch(e){}}
+function recSave(){try{localStorage.setItem(recKey(),JSON.stringify({list:F.rec.list,reply:F.rec.reply,at:F.rec.at}));}catch(e){}}
+function usesText(r){return (r.uses||[]).map(function(u){var it=itemById(u.item_id);var unit=it?it.unit:'';return u.name+(u.mode==='all'?' целиком':u.mode==='half'?' половину':u.mode==='amount'&&u.amount!=null?' '+num(u.amount)+' '+unit:'');}).join(', ');}
+function recipesView(){
+  recLoad();var R=F.rec,h='';
+  if(!aiOn())return '<div class="fields" style="margin-top:18px;padding:18px;display:flex;flex-direction:column;gap:12px"><div style="font-size:16px;line-height:1.5">Помощник подберёт блюда из того, что есть: сначала из продуктов, которые скоро испортятся, только под вашу технику и без того, что вы не едите.</div><button class="btn" data-a="frAiOn">'+I('spark')+'Включить ИИ для холодильника</button></div>';
+  h+=chips('Время',[[15,'до 15 мин'],[30,'до 30 мин'],[60,'до часа'],[0,'неважно']],R.minutes,'r_min');
+  h+=chips('Порций',[[1,'1'],[2,'2'],[3,'3'],[4,'4']],R.servings,'r_srv');
+  h+='<div class="quick" style="margin-top:6px"><span class="muted">'+I('edit')+'</span><input id="frwish" placeholder="Пожелание: что-то сладкое, на завтрак…" aria-label="Пожелание к рецептам" value="'+esc(R.wish)+'"></div>';
+  h+='<button class="btn" style="width:100%;margin-top:12px" data-a="frRec"'+(R.busy?' disabled':'')+'>'+I('spark')+(R.busy?'Подбираю…':'Подобрать рецепты')+'</button>';
+  var ap=appliances();h+='<div class="gh">Техника: '+esc(ap.join(', ')||'не выбрана')+'. Поменять — в настройках холодильника.</div>';
+  if(R.reply&&R.list.length)h+='<div class="muted" style="margin-top:16px;line-height:1.5">'+esc(R.reply)+'</div>';
+  R.list.forEach(function(r,i){
+    var meta=[];if(r.minutes)meta.push(r.minutes+' мин');if(r.appliance)meta.push(esc(r.appliance));if(r.servings)meta.push(r.servings+' '+C.plural(r.servings,'порция','порции','порций'));
+    h+='<div class="rcard"><div class="rt">'+esc(r.title)+'</div><div class="meta">'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+(r.have_all||!r.missing.length?'<span class="ok">всё есть</span>':'<span class="soon">докупить: '+esc(r.missing.map(function(m){return m.name;}).join(', '))+'</span>')+'</div>';
+    if(r.uses.length)h+='<div class="ru"><b>Из холодильника:</b> '+esc(usesText(r))+'</div>';
+    if(r.steps.length)h+='<details><summary>Как готовить</summary><ol>'+r.steps.map(function(s){return '<li>'+esc(s)+'</li>';}).join('')+'</ol>'+(r.tip?'<div class="gh">'+esc(r.tip)+'</div>':'')+'</details>';
+    h+='<div class="row2" style="margin-top:10px">'+(r.missing.length?'<button class="btn2" data-a="frRecBuy" data-v="'+i+'">'+I('plus')+'В покупки ('+r.missing.length+')</button>':'')+'<button class="btn2" data-a="frRecCook" data-v="'+i+'">'+I('check')+'Приготовил</button></div></div>';
+  });
+  if(!R.list.length&&!R.busy)h+='<div class="empty">Нажми «Подобрать рецепты» — помощник посмотрит, что есть в холодильнике.</div>';
+  return h;
+}
+
 /* ---------- элементы интерфейса ---------- */
 function chips(label,opts,cur,key,hint,extra){
   return '<div><div class="gl">'+label+'</div><div class="chips">'+opts.map(function(o){return '<button class="chip'+(String(o[0])===String(cur)?' on':'')+'" data-a="frSet" data-k="'+key+'" data-v="'+esc(o[0])+'">'+o[1]+'</button>';}).join('')+(extra||'')+'</div>'+(hint?'<div class="gh">'+hint+'</div>':'')+'</div>';
@@ -235,11 +294,11 @@ function row(it,showPlace){
 }
 function sortItems(a,b){var x=a.expires||'9999',y=b.expires||'9999';if(x!==y)return x<y?-1:1;return a.name.localeCompare(b.name,'ru');}
 function quickForm(){
-  return '<form class="quick" id="frq" autocomplete="off"><span class="muted">'+I('plus')+'</span><input id="frin" placeholder="Добавить: молоко 2 шт до 5.11" aria-label="Добавить продукт" value="'+esc(F.quick)+'">'+C.micBtn('fr')+'<button class="iconbtn" type="button" data-a="frAdd" aria-label="Добавить подробно">'+I('edit')+'</button></form>';
+  return '<form class="quick" id="frq" autocomplete="off"><span class="muted">'+I('plus')+'</span><input id="frin" placeholder="Добавить: молоко 2 шт до 5.11" aria-label="Добавить продукт" value="'+esc(F.quick)+'">'+C.micBtn('fr')+'<label class="iconbtn" aria-label="Скрин заказа или фото продуктов" title="Скрин заказа или фото продуктов" style="cursor:pointer">'+I('camera')+'<input type="file" id="frfile" accept="image/*" multiple class="vh"></label><button class="iconbtn" type="button" data-a="frAdd" aria-label="Добавить подробно">'+I('edit')+'</button></form>';
 }
 function tabs(){
   var n=F.items.length,s=F.shop.filter(function(x){return !x.done;}).length;
-  var t=[['items','Продукты'+(n?' '+n:'')],['shop','Покупки'+(s?' '+s:'')],['log','История']];
+  var t=[['items','Продукты'+(n?' '+n:'')],['shop','Покупки'+(s?' '+s:'')],['cook','Приготовить'],['log','История']];
   return '<div class="tabs" role="tablist">'+t.map(function(x){return '<button role="tab" aria-selected="'+(F.tab===x[0])+'" class="'+(F.tab===x[0]?'on':'')+'" data-a="frTab" data-v="'+x[0]+'">'+x[1]+'</button>';}).join('')+'</div>';
 }
 function itemsView(){
@@ -250,7 +309,7 @@ function itemsView(){
   var extra=Object.keys(counts).filter(function(p){return pl.indexOf(p)<0;});
   h+='<div class="chipsrow"><button class="fchip'+(F.place==='all'?' on':'')+'" data-a="frPlace" data-v="all">Все</button>'+pl.concat(extra).map(function(p){return '<button class="fchip'+(F.place===p?' on':'')+'" data-a="frPlace" data-v="'+esc(p)+'">'+esc(p)+(counts[p]?' <span class="muted">'+counts[p]+'</span>':'')+'</button>';}).join('')+'</div>';
   if(F.place!=='all')list=list.filter(function(it){return it.place===F.place;});
-  if(!F.items.length)return h+'<div class="empty">Пока пусто. Добавь продукты строкой выше: «молоко 2 шт до 5.11», «курица 1 кг на 3 дня», «сыр, хлеб и 10 яиц» — или нажми микрофон и скажи.</div>';
+  if(!F.items.length)return h+'<div class="empty">Пока пусто. Добавь продукты строкой выше: «молоко 2 шт до 5.11», «курица 1 кг на 3 дня», «сыр, хлеб и 10 яиц», скажи в микрофон или нажми на камеру и выбери скрин заказа или фото продуктов.</div>';
   if(!list.length)return h+'<div class="empty">'+(qq?'Ничего не нашлось.':'Здесь пусто.')+'</div>';
   var hot=list.filter(soon).sort(sortItems),rest=list.filter(function(it){return !soon(it);});
   if(hot.length){h+=sec('Скоро испортится',String(hot.length),'warn');hot.forEach(function(it){h+=row(it,F.place==='all');});}
@@ -283,13 +342,18 @@ function view(){
   if(F.err)return h+'<div class="empty">Не удалось загрузить: '+esc(F.err)+'<br><button class="link" data-a="frReload">Повторить</button></div>';
   if(!F.kitchen)return h+'<div class="fields" style="margin-top:18px;padding:18px;display:flex;flex-direction:column;gap:12px"><div style="font-size:16px;line-height:1.5">Здесь можно вести учёт продуктов: что есть, сколько осталось и до какого числа годно. Закончившееся само попадает в список покупок.</div><div class="muted" style="font-size:14px;line-height:1.5">Холодильник общий: создай его и добавь партнёра в настройках холодильника. Если партнёр уже создал его, попроси добавить тебя — он появится здесь сам.</div><button class="btn" data-a="frCreate">'+I('plus')+'Создать холодильник</button></div>';
   h+=quickForm()+tabs();
-  h+=F.tab==='shop'?shopView():F.tab==='log'?logView():itemsView();
+  if(F.aiBusy)h+='<div class="aibusy">'+I('spark')+esc(F.aiBusy)+'</div>';
+  h+=F.tab==='shop'?shopView():F.tab==='log'?logView():F.tab==='cook'?recipesView():itemsView();
   return h;
 }
 function bindMain(){
   var f=document.getElementById('frq');
   if(f&&!f.__b){f.__b=1;var i=document.getElementById('frin');i.addEventListener('input',function(){F.quick=i.value;});
     f.addEventListener('submit',function(e){e.preventDefault();var v=i.value.trim();if(!v)return;F.quick='';i.value='';addFromText(v);});}
+  var fi=document.getElementById('frfile');
+  if(fi&&!fi.__b){fi.__b=1;fi.addEventListener('change',async function(){var files=[].slice.call(fi.files||[]);fi.value='';if(!files.length)return;if(needAi())return;
+    try{F.aiBusy='Готовлю картинки…';rr();var imgs=await prepareImages(files);await aiParse((document.getElementById('frin')||{}).value||'',imgs);}catch(e){F.aiBusy='';rr();toast('Не получилось: '+e.message);}});}
+  var fw=document.getElementById('frwish');if(fw&&!fw.__b){fw.__b=1;fw.addEventListener('input',function(){F.rec.wish=fw.value;});}
   var s=document.getElementById('frshop');
   if(s&&!s.__b){s.__b=1;s.addEventListener('submit',function(e){e.preventDefault();var inp=document.getElementById('frshopin'),v=inp.value.trim();if(!v)return;inp.value='';addShop(v).then(function(){var n=document.getElementById('frshopin');if(n)n.focus();});});}
   var sr=document.getElementById('frsearch');
@@ -330,6 +394,7 @@ function editForm(s){
   h+=expChips(s,'exp');
   var od=s.open_days;h+=chips('После вскрытия хранится',[['','Не указано'],[1,'1 день'],[2,'2 дня'],[3,'3 дня'],[5,'5 дней'],[7,'неделю'],[14,'2 недели'],[30,'месяц']],od==null?'':od,'open_days',s._kodays?'Подсказка: обычно '+s._kodays+' '+C.plural(s._kodays,'день','дня','дней'):'','<button class="chip'+(od!=null&&[1,2,3,5,7,14,30].indexOf(+od)<0?' on':'')+'" data-a="frCustom" data-k="open_days">'+(od!=null&&[1,2,3,5,7,14,30].indexOf(+od)<0?od+' дн.':'Своё…')+'</button>');
   h+=chips('Категория',[['','—']].concat(CATS.map(function(c){return[c,c];})),s.category||'','category');
+  if(aiOn())h+='<button class="btn2" data-a="frShelf"'+(s._shelfBusy?' disabled':'')+'>'+I('spark')+(s._shelfBusy?'Спрашиваю…':'Подсказать сроки хранения')+'</button>'+(s._shelfNote?'<div class="gh">'+esc(s._shelfNote)+'</div>':'');
   return h;
 }
 function buySheet(s){
@@ -355,7 +420,9 @@ function settingsSheet(){
   var p=myPrefs();
   h+='<div class="rulebox"><div class="gl" style="margin:0;font-size:15px;color:var(--ink)">Мои ограничения в еде</div><label><div class="gl">Не люблю</div><textarea class="fld" id="fr-dislikes" rows="2" placeholder="Например: кинза, оливки, печень" aria-label="Не люблю">'+esc(p.dislikes||'')+'</textarea></label><label><div class="gl">Аллергия и нельзя</div><textarea class="fld" id="fr-allergies" rows="2" placeholder="Например: орехи, лактоза" aria-label="Аллергия">'+esc(p.allergies||'')+'</textarea></label><div class="gh" style="margin:0">У каждого свои. Рецепты будут учитывать ограничения всех, кто пользуется этим холодильником.</div></div>';
   var w=warnDays();h+=chips('Предупреждать о сроке за',[[0,'в последний день'],[1,'1 день'],[2,'2 дня'],[3,'3 дня'],[5,'5 дней']],w,'p_warn','',[0,1,2,3,5].indexOf(w)<0?'<button class="chip on" data-a="frCustom" data-k="p_warn">'+w+' дн.</button>':'<button class="chip" data-a="frCustom" data-k="p_warn">Своё…</button>');
-  h+=chips('Уведомления о сроках',[['1','Включены'],['0','Выключены']],pset().notify===false?'0':'1','p_notify','Начнут приходить после следующего обновления. Нужны включённые уведомления на устройстве.');
+  h+=chips('Уведомления о сроках',[['1','Включены'],['0','Выключены']],pset().notify===false?'0':'1','p_notify','Раз в день, если что-то скоро испортится. Нужны включённые уведомления на этом устройстве (общие настройки → Уведомления).');
+  if(pset().notify!==false)h+=chips('Во сколько',[['09:00','9:00'],['10:00','10:00'],['12:00','12:00'],['18:00','18:00'],['20:00','20:00']],pset().notify_at||'10:00','p_nat');
+  h+=chips('ИИ для холодильника',[['1','Включён'],['0','Выключен']],aiOn()?'1':'0','p_ai','Распознаёт скрины заказов и фото продуктов, понимает голос и подбирает рецепты. Когда пользуешься, фото, текст и список продуктов отправляются в Claude (Anthropic); фото нигде не сохраняются.');
   return h;
 }
 function sheet(s){
@@ -363,6 +430,17 @@ function sheet(s){
   if(s.type==='fr-edit')return{title:s.id?'Изменить продукт':'Новый продукт',body:editForm(s),foot:'<button class="btn" data-a="frSave">'+(s.id?'Сохранить':'Добавить в холодильник')+'</button>'};
   if(s.type==='fr-buy')return{title:'Купил',body:buySheet(s),foot:'<button class="btn" data-a="frBuySave">'+I('fridge')+'Положить в холодильник</button><button class="btn2" data-a="frBuyOnly">Просто отметить купленным</button>'};
   if(s.type==='fr-settings')return{title:'Настройки холодильника',body:settingsSheet()};
+  if(s.type==='fr-aion')return{title:'ИИ для холодильника',body:'<div style="font-size:16px;line-height:1.5">ИИ распознаёт скрины заказов и фото продуктов, понимает фразы вроде «съели половину сыра» и подбирает рецепты под вашу технику.</div><div class="muted" style="font-size:14px;line-height:1.5">Когда ты им пользуешься, картинки, текст и список продуктов отправляются в Claude (Anthropic) на обработку. Фото нигде не сохраняются. Выключить можно в настройках холодильника.</div>',foot:'<button class="btn" data-a="frAiOn">'+I('spark')+'Включить</button>'};
+  if(s.type==='fr-ai'){var on=s.add.filter(function(x){return x._on;}).length+s.change.filter(function(x){return x._on;}).length;
+    var b=(s.reply?'<div class="muted" style="line-height:1.5">'+esc(s.reply)+'</div>':'');
+    if(s.add.length)b+='<div><div class="gl">Добавить в холодильник</div>'+s.add.map(function(x,i){var m=[];if(x.qty!=null)m.push(num(x.qty)+' '+x.unit);if(STATE_TXT[x.state])m.push(STATE_TXT[x.state]);m.push(x.expires?'до '+C.fmtDM(x.expires)+(x._est?' (примерно)':''):'без срока');m.push(x.place);
+      return '<div class="task"><button class="chk'+(x._on?' on':'')+'" data-a="frAiTog" data-v="a'+i+'" aria-label="'+(x._on?'Не добавлять: ':'Добавить: ')+esc(x.name)+'"><span>'+(x._on?I('check'):'')+'</span></button><button class="tb" data-a="frAiEdit" data-v="'+i+'"><span class="tt'+(x._on?'':' done')+'">'+esc(x.name)+'</span><span class="meta">'+m.map(function(z){return '<span>'+esc(z)+'</span>';}).join('')+'<span>'+I('edit')+'изменить</span></span></button></div>';}).join('')+'</div>';
+    if(s.change.length)b+='<div><div class="gl">Изменить</div>'+s.change.map(function(c,i){return '<div class="task"><button class="chk'+(c._on?' on':'')+'" data-a="frAiTog" data-v="c'+i+'" aria-label="'+esc(changeText(c))+'"><span>'+(c._on?I('check'):'')+'</span></button><div class="tb"><span class="tt'+(c._on?'':' done')+'">'+esc(changeText(c))+'</span></div></div>';}).join('')+'</div>';
+    return{title:'Проверь, что распознано',body:b,foot:'<button class="btn" data-a="frAiApply"'+(on?'':' disabled')+'>Применить'+(on?' ('+on+')':'')+'</button>'};}
+  if(s.type==='fr-cook'){var r=F.rec.list[s.idx];if(!r)return null;
+    var b2='<div style="font-size:17px;font-weight:600">'+esc(r.title)+'</div><div class="gl">Что списать из холодильника</div>'+(r.uses.length?r.uses.map(function(u,i){var it=itemById(u.item_id);var t=u.name+(u.mode==='all'?' — целиком':u.mode==='half'?' — половину':u.mode==='amount'&&u.amount!=null&&it?' — '+num(u.amount)+' '+it.unit:' — немного');var on=s.on[i]!==false;
+      return '<div class="task"><button class="chk'+(on?' on':'')+'" data-a="frCookTog" data-v="'+i+'" aria-label="'+esc(t)+'"'+(it?'':' disabled')+'><span>'+(on&&it?I('check'):'')+'</span></button><div class="tb"><span class="tt'+(on&&it?'':' done')+'">'+esc(t)+(it?'':' (уже нет)')+'</span></div></div>';}).join(''):'<div class="muted">Ничего не нужно списывать.</div>');
+    return{title:'Приготовил',body:b2,foot:'<button class="btn" data-a="frCookApply">Списать продукты</button>'};}
   return null;
 }
 function bindSheet(root,first){
@@ -400,11 +478,42 @@ var A={
   frFinish:function(v,id){var it=itemById(id);if(it)finish(it,'finish');},
   frToss:function(v,id){var it=itemById(id);if(it)finish(it,'toss');},
   frDel:async function(v,id){var it=itemById(id);if(!it||!confirm('Удалить «'+it.name+'»? Это для ошибок: в историю и в покупки не попадёт.'))return;var i=F.items.indexOf(it);F.items.splice(i,1);C.closeSheet();rr();try{await C.q(sb.from('fridge_items').delete().eq('id',id));}catch(e){F.items.splice(i,0,it);rr();C.err(e);}},
+  frAiOn:function(){savePrefs({settings:Object.assign({},pset(),{ai:true})}).then(function(){var s=C.UI.sheet;if(s&&s.type==='fr-aion')C.closeSheet();rr();toast('ИИ для холодильника включён');});},
+  frAiTog:function(v){var s=C.UI.sheet,arr=v[0]==='a'?s.add:s.change,x=arr[+v.slice(1)];if(x){x._on=!x._on;C.renderSheet();}},
+  frAiEdit:function(v){var s=C.UI.sheet,x=s.add[+v];if(!x)return;var k=know(x.name)||{};C.UI.sheet={type:'fr-edit',aiBack:s,aiIdx:+v,name:x.name,place:x.place,qty:x.qty==null?'':x.qty,unit:x.unit,state:x.state,expires:x.expires,open_days:x.open_days,category:x.category,_est:x._est,_kodays:k.open};C.renderSheet(true);},
+  frAiApply:async function(){var s=C.UI.sheet;C.closeSheet();var n=0,names=[];
+    for(var i=0;i<s.add.length;i++){var x=s.add[i];if(!x._on)continue;var r=await addItem({name:x.name,qty:x.qty,unit:x.unit,state:x.state,expires:x.expires,open_days:x.open_days,category:x.category,place:x.place},true);if(r){n++;names.push(r.name);}}
+    for(var j=0;j<s.change.length;j++){if(s.change[j]._on){await applyChange(s.change[j]);n++;}}
+    rr();if(names.length)toast('Добавлено: '+names.slice(0,5).join(', ')+(names.length>5?' и ещё '+(names.length-5):''));else if(n)toast('Готово');},
+  frRec:async function(){if(needAi())return;var R=F.rec;R.busy=true;rr();
+    try{var a=await ai({mode:'recipes',minutes:R.minutes,servings:R.servings,wish:R.wish});R.list=a.recipes||[];R.reply=a.reply||'';R.at=Date.now();recSave();if(!R.list.length)toast(a.reply||'Не получилось подобрать — добавь больше продуктов');}
+    catch(e){toast('Не получилось: '+e.message);}R.busy=false;rr();},
+  frRecBuy:async function(v){var r=F.rec.list[+v];if(!r)return;var n=0;
+    for(var i=0;i<r.missing.length;i++){var m=r.missing[i];if(F.shop.some(function(s){return !s.done&&norm(s.name)===norm(m.name);}))continue;var k=know(m.name)||{};
+      try{var row=await C.q(sb.from('fridge_shop').insert({kitchen_id:F.kitchen.id,name:C.cap(m.name).slice(0,120),qty:m.qty,unit:m.unit||'шт',place:places()[0],category:k.cat||'',shelf_days:k.shelf||null,open_days:k.open==null?null:k.open,source:'recipe',added_by:C.ME}).select().single());F.shop.push(row);n++;}catch(e){C.err(e);}}
+    rr();toast(n?'В покупках: '+r.missing.map(function(m){return m.name;}).join(', '):'Уже в покупках');},
+  frRecCook:function(v){C.UI.sheet={type:'fr-cook',idx:+v,on:{}};C.renderSheet(true);},
+  frCookTog:function(v){var s=C.UI.sheet;s.on[+v]=s.on[+v]===false;C.renderSheet();},
+  frCookApply:async function(){var s=C.UI.sheet,r=F.rec.list[s.idx];C.closeSheet();if(!r)return;var n=0;
+    for(var i=0;i<r.uses.length;i++){if(s.on[i]===false)continue;var u=r.uses[i],it=itemById(u.item_id);if(!it)continue;
+      if(u.mode==='all')await finish(it,'finish');else if(u.mode==='half'){if(counted(it))await useAmount(it,+it.qty/2);else await setState(it,'half');}
+      else if(u.mode==='amount'&&u.amount!=null&&counted(it))await useAmount(it,+u.amount);
+      else await setState(it,it.state==='full'?'open':it.state==='open'?'half':it.state==='half'?'quarter':'low');n++;}
+    rr();toast('Приятного аппетита! Списано продуктов: '+n);},
+  frShelf:async function(){var s=C.UI.sheet;if(!s||!(s.name||'').trim()){toast('Сначала напиши название');return;}s._shelfBusy=true;C.renderSheet();
+    try{var a=await ai({mode:'shelf',name:s.name,place:s.place});s=C.UI.sheet;if(!s||s.type!=='fr-edit')return;s._shelfBusy=false;
+      if(a.shelf_days&&!s.expires){s.expires=addDays(T(),a.shelf_days);s._est=true;}if(a.open_days!=null&&s.open_days==null)s.open_days=a.open_days;if(a.category&&!s.category)s.category=a.category;
+      s._shelfNote=(a.shelf_days?'Обычно хранится '+a.shelf_days+' '+C.plural(a.shelf_days,'день','дня','дней'):'')+(a.open_days!=null?', после вскрытия — '+a.open_days+' '+C.plural(a.open_days,'день','дня','дней'):'')+(a.note?'. '+a.note:'');C.renderSheet();}
+    catch(e){var s2=C.UI.sheet;if(s2)s2._shelfBusy=false;C.renderSheet();toast('Не получилось: '+e.message);}},
   frEdit:function(v,id){var it=itemById(id);if(!it)return;var k=know(it.name)||{};C.UI.sheet={type:'fr-edit',id:id,name:it.name,place:it.place,qty:it.qty==null?'':it.qty,unit:it.unit,state:it.state,expires:it.expires,open_days:it.open_days,category:it.category,_kodays:k.open};C.renderSheet(true);},
   frSet:function(v,id,el){
     var k=el.getAttribute('data-k'),s=C.UI.sheet;
     if(k==='k_pick'){try{localStorage.setItem(pickKey(),v);}catch(e){}F.state='ok';load().then(function(){C.renderSheet();});return;}
     if(k==='p_warn'){var st=Object.assign({},pset(),{warn:+v});savePrefs({settings:st}).then(function(){C.renderSheet();rr();});return;}
+    if(k==='p_ai'){savePrefs({settings:Object.assign({},pset(),{ai:v==='1'})}).then(function(){C.renderSheet();rr();});return;}
+    if(k==='p_nat'){savePrefs({settings:Object.assign({},pset(),{notify_at:v})}).then(function(){C.renderSheet();});return;}
+    if(k==='r_min'){F.rec.minutes=+v;rr();return;}
+    if(k==='r_srv'){F.rec.servings=+v;rr();return;}
     if(k==='p_notify'){var st2=Object.assign({},pset(),{notify:v==='1'});savePrefs({settings:st2}).then(function(){C.renderSheet();});return;}
     if(!s)return;
     if(k==='exp'){s.expires=v==='none'?null:addDays(T(),+v);s._est=false;}
@@ -421,6 +530,7 @@ var A={
   },
   frSave:async function(){
     var s=C.UI.sheet;var name=(s.name||'').trim();if(!name){toast('Напиши название продукта');return;}
+    if(s.aiBack){var q0=s.qty===''||s.qty==null?null:parseFloat(String(s.qty).replace(',','.'));var x=s.aiBack.add[s.aiIdx];Object.assign(x,{name:C.cap(name),place:s.place,qty:q0,unit:s.unit,state:s.state,expires:s.expires,open_days:s.open_days,category:s.category,_est:s._est,_on:true});C.UI.sheet=s.aiBack;C.renderSheet(true);return;}
     var qty=s.qty===''||s.qty==null?null:parseFloat(String(s.qty).replace(',','.'));if(qty!=null&&!(qty>=0)){toast('Количество — это число');return;}
     var f={name:C.cap(name).slice(0,120),place:s.place||places()[0],qty:qty,unit:s.unit||'шт',state:s.state||'full',expires:s.expires||null,open_days:s.open_days==null||s.open_days===''?null:+s.open_days,category:s.category||''};
     C.closeSheet();
@@ -452,7 +562,7 @@ var A={
 };
 Object.keys(A).forEach(function(k){C.A[k]=A[k];});
 
-window.FRIDGE={view:view,sheet:sheet,bindSheet:bindSheet,bindMain:bindMain,voice:voice,hasKitchen:function(){return !!F.kitchen;},
+window.FRIDGE={_ai:ai,view:view,sheet:sheet,bindSheet:bindSheet,bindMain:bindMain,voice:voice,hasKitchen:function(){return !!F.kitchen;},
   _F:F,_parse:parseItems,_find:findItem,_load:load};
 if(C.ME&&C.UI.view==='fridge')C.render();
 }

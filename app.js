@@ -53,7 +53,7 @@ leaf:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',moon
 pill:'<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.5 8.5l5 7"/>',pen:'<path d="M4 20l1-5L16 4l4 4L9 19z"/>',
 music:'<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',dumb:'<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
 coffee:'<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',bed:'<path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.5"/>',
-star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',clock2:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',fridge:'<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5 10h14M8.5 6v1.5M8.5 13v3"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
+star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',clock2:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',camera:'<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',fridge:'<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5 10h14M8.5 6v1.5M8.5 13v3"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
 };
 function I(n,cls){return '<svg class="i'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(P[n]||P.circle)+'</svg>';}
 var HICONS=['book','wave','drop','run','dumb','leaf','moon','sun','heart','pill','pen','music','coffee','bed','star','circle'];
@@ -341,7 +341,7 @@ async function pushTest(){
 }
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(function(){});
-  navigator.serviceWorker.addEventListener('message',function(e){if(e.data&&e.data.open&&ME&&findTask(e.data.open))openTask(e.data.open);});
+  navigator.serviceWorker.addEventListener('message',function(e){if(e.data&&e.data.view&&ME){A.go(e.data.view);return;}if(e.data&&e.data.open&&ME&&findTask(e.data.open))openTask(e.data.open);});
 }
 
 /* =================== Тост =================== */
@@ -1147,7 +1147,7 @@ async function start2(){
   try{await loadAll();}catch(e){document.getElementById('app').innerHTML='<div class="loading">Не удалось загрузить данные: '+esc(e.message)+'</div>';return;}
   applyTheme();render();subscribe();
   try{var tz=Intl.DateTimeFormat().resolvedOptions().timeZone;if(tz&&SET.tz!==tz){SET.tz=tz;saveSettings();}}catch(e){}
-  var pt=new URLSearchParams(location.search).get('task');if(pt){history.replaceState(null,'',location.pathname);if(findTask(pt))openTask(pt);}
+  var sp=new URLSearchParams(location.search),pt=sp.get('task'),pvw=sp.get('view');if(pt||pvw)history.replaceState(null,'',location.pathname);if(pvw==='fridge'){A.go('fridge');}else if(pt&&findTask(pt))openTask(pt);
 }
 sb.auth.onAuthStateChange(function(ev,session){
   if(ev==='PASSWORD_RECOVERY'){FROM_RECOVERY=true;ME=session&&session.user.id;authScreen('setpass');return;}
