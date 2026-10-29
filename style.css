@@ -281,7 +281,8 @@ body.pc .dh{font-size:46px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* ===== Помощник ===== */
-.bnav .in{grid-template-columns:repeat(5,1fr)}
+.bnav .in{grid-template-columns:repeat(6,1fr)}
+.bnav button{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .chat{display:flex;flex-direction:column;gap:12px;margin-top:16px}
 .chat .m{max-width:88%;padding:12px 14px;border-radius:16px;line-height:1.5;font-size:15px;word-break:break-word}
 .chat .m.u{margin-left:auto;background:var(--ink);color:var(--bg);border-bottom-right-radius:6px}
@@ -328,3 +329,9 @@ body.pc .composer{bottom:16px}
 .tpdot{position:absolute;left:126px;top:126px;width:8px;height:8px;border-radius:50%;background:var(--acc);z-index:1}
 .tphint{font-size:13px;color:var(--muted);text-align:center}
 .tpbox .row2 .btn2{height:42px}
+
+/* ===== Холодильник ===== */
+.frow{align-items:center}
+.frow .fq{height:36px;padding:0 12px;flex-shrink:0;font-weight:600;font-variant-numeric:tabular-nums}
+.meta .soon{color:var(--warn);font-weight:500}
+.drow .av{width:24px;height:24px;font-size:11px}

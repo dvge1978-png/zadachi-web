@@ -53,7 +53,7 @@ leaf:'<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',moon
 pill:'<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.5 8.5l5 7"/>',pen:'<path d="M4 20l1-5L16 4l4 4L9 19z"/>',
 music:'<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',dumb:'<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
 coffee:'<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',bed:'<path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.5"/>',
-star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',clock2:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
+star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',circle:'<circle cx="12" cy="12" r="7"/>',award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-3 5 3-1.5-7"/>',clock2:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',fridge:'<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5 10h14M8.5 6v1.5M8.5 13v3"/>',mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>'
 };
 function I(n,cls){return '<svg class="i'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(P[n]||P.circle)+'</svg>';}
 var HICONS=['book','wave','drop','run','dumb','leaf','moon','sun','heart','pill','pen','music','coffee','bed','star','circle'];
@@ -526,9 +526,10 @@ function startVoice(target){
   var r;try{r=new SR();}catch(e){toast('Голосовой ввод не поддерживается в этом браузере');return;}
   r.lang='ru-RU';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
   var text='';
-  r.onresult=function(e){var t='';for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;text=t;var el=document.getElementById(target==='as'?'asin':'qin');if(el)el.value=t;if(target==='q')UI.quick=t;};
+  r.onresult=function(e){var t='';for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;text=t;var el=document.getElementById(target==='as'?'asin':target==='fr'?'frin':'qin');if(el)el.value=t;if(target==='q')UI.quick=t;};
   r.onerror=function(e){if(e.error==='not-allowed'||e.error==='service-not-allowed')toast('Разреши доступ к микрофону для этого сайта');else if(e.error!=='no-speech'&&e.error!=='aborted')toast('Не получилось распознать речь');};
   r.onend=function(){VOICE.on=false;VOICE.rec=null;var t=text.trim();if(target==='q')UI.quick='';render();if(!t)return;
+    if(target==='fr'){if(window.FRIDGE)window.FRIDGE.voice(t);return;}
     if(target==='as'||SET.assistant){askAssistant('chat',target==='q'?'Создай задачу: '+t:t,null,{autoAdd:true});}
     else{var qi=document.getElementById('qin'),f=document.getElementById('quick');if(qi&&f){qi.value=t;UI.quick=t;f.dispatchEvent(new Event('submit',{cancelable:true}));}}};
   VOICE.on=true;VOICE.target=target;VOICE.rec=r;
@@ -596,7 +597,7 @@ async function asAddTask(mi,ti){var m=AS.msgs[mi],t=m&&m.tasks[ti];if(!t||t._add
 function sidebar(){
   var nav=function(v,icn,t,n){return '<button class="'+(UI.view===v&&(v!=='tasks'||UI.filter==='all')?'on':'')+'" data-a="go" data-v="'+v+'">'+I(icn)+'<span class="l">'+t+'</span>'+(n?'<span class="n">'+n+'</span>':'')+'</button>';};
   var todayN=myTasks().filter(function(t){return !t.done&&!hiddenTask(t)&&groupOf(t)==='today';}).length;
-  var h='<div class="logo" style="padding:0 12px"><b>'+I('check')+'</b>задачи</div><div class="nav">'+nav('tasks','sun','Задачи',todayN||'')+nav('inbox','inbox','Входящие',inbox().length||'')+nav('calendar','cal','Календарь')+nav('habits','drop','Привычки')+nav('diary','book','Дневник')+nav('notes','note','Заметки')+nav('assistant','spark','Помощник')+'</div>';
+  var h='<div class="logo" style="padding:0 12px"><b>'+I('check')+'</b>задачи</div><div class="nav">'+nav('tasks','sun','Задачи',todayN||'')+nav('inbox','inbox','Входящие',inbox().length||'')+nav('calendar','cal','Календарь')+nav('habits','drop','Привычки')+nav('diary','book','Дневник')+nav('notes','note','Заметки')+nav('assistant','spark','Помощник')+'</div><div class="nav"><div class="t">Кухня</div>'+nav('fridge','fridge','Холодильник')+'</div>';
   var own=D.lists.filter(function(l){return !isShared(l);}),sh=D.lists.filter(isShared);
   var li=function(l){var n=myTasks().filter(function(t){return t.list_id===l.id&&!t.done;}).length;return '<button class="'+(UI.view==='tasks'&&UI.filter===l.id?'on':'')+'" data-a="filter" data-v="'+l.id+'"><i class="dot" style="--c:'+esc(l.color)+'"></i><span class="l">'+esc(l.name)+'</span><span class="n">'+(l.hidden?I('eyeoff'):'')+(n||'')+'</span></button>';};
   h+='<div class="nav"><div class="t">Списки</div>'+own.map(li).join('')+'<button data-a="listNew">'+I('plus')+'<span class="l">Новый список</span></button></div>';
@@ -607,7 +608,7 @@ function sidebar(){
 function bottomNav(){
   var b=function(v,icn,t,extra){return '<button class="'+(UI.view===v?'on':'')+'" data-a="go" data-v="'+v+'" aria-current="'+(UI.view===v?'page':'false')+'"><span class="cnt">'+I(icn)+(extra||'')+'</span>'+t+'</button>';};
   var n=inbox().length;
-  return '<nav class="bnav"><div class="in">'+b('tasks','tasks','Задачи')+b('calendar','cal','Календарь')+b('assistant','spark','Помощник')+b('notes','note','Заметки')+b('more','menu','Ещё',n?'<em>'+n+'</em>':'')+'</div></nav>';
+  return '<nav class="bnav"><div class="in">'+b('tasks','tasks','Задачи')+b('calendar','cal','Календарь')+b('assistant','spark','Помощник')+b('notes','note','Заметки')+b('fridge','fridge','Холодильник')+b('more','menu','Ещё',n?'<em>'+n+'</em>':'')+'</div></nav>';
 }
 function moreView(){
   var n=inbox().length;
@@ -615,7 +616,7 @@ function moreView(){
   return '<div class="top"><div><div class="date">'+fmtLong(T())+'</div><h1 class="dh">Ещё</h1></div></div><div class="fields" style="margin-top:18px">'+r('inbox','inbox','Входящие',n?'<span class="badge">'+n+'</span>':'')+r('habits','drop','Привычки')+r('diary','book','Дневник')+'<button class="lrow" data-a="lists">'+I('list')+'<b>Списки</b>'+I('right')+'</button><button class="lrow" data-a="settings">'+I('gear')+'<b>Настройки</b>'+I('right')+'</button></div>';
 }
 function mainContent(){
-  switch(UI.view){case'inbox':return inboxView();case'calendar':return calView();case'diary':return diaryView();case'habits':return habitsView();case'notes':return notesView();case'more':return moreView();case'assistant':return assistantView();default:return tasksView();}
+  switch(UI.view){case'inbox':return inboxView();case'calendar':return calView();case'diary':return diaryView();case'habits':return habitsView();case'notes':return notesView();case'more':return moreView();case'assistant':return assistantView();case'fridge':return window.FRIDGE?window.FRIDGE.view():'<div class="empty">Загружаю…</div>';default:return tasksView();}
 }
 function render(){
   if(!ME)return;
@@ -625,7 +626,7 @@ function render(){
   if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')&&ae.closest('#app')){var fm=ae.form;keep={id:ae.id,cf:fm&&fm.getAttribute('data-cform'),sf:fm&&fm.getAttribute('data-subform'),v:ae.value,pos:ae.selectionStart};}
   var detail='';
   if(pc){var t=UI.sel&&findTask(UI.sel);detail=t?'<aside class="detail" aria-label="Задача">'+detailHead(t)+'<div class="sb">'+taskDetail(t)+'</div><div class="sf">'+taskActions(t)+'</div></aside>':'<aside class="detail empty">Выбери задачу, чтобы увидеть подробности</aside>';}
-  app.innerHTML='<div class="shell">'+(pc?'<aside class="side">'+sidebar()+'</aside>':'')+'<main class="main"><div class="wrap">'+mainContent()+'</div></main>'+detail+'</div>'+(pc?'':bottomNav()+(UI.view==='tasks'||UI.view==='calendar'?'<button class="fab" data-a="add" aria-label="Новая задача">'+I('plus')+'</button>':''));
+  app.innerHTML='<div class="shell">'+(pc?'<aside class="side">'+sidebar()+'</aside>':'')+'<main class="main"><div class="wrap">'+mainContent()+'</div></main>'+detail+'</div>'+(pc?'':bottomNav()+(UI.view==='tasks'||UI.view==='calendar'?'<button class="fab" data-a="add" aria-label="Новая задача">'+I('plus')+'</button>':UI.view==='fridge'&&window.FRIDGE&&window.FRIDGE.hasKitchen()?'<button class="fab" data-a="frAdd" aria-label="Добавить продукт">'+I('plus')+'</button>':''));
   var m2=app.querySelector('.main');if(m2)m2.scrollTop=scroll;
   bindMain();
   if(keep){var el=keep.id?document.getElementById(keep.id):keep.cf?document.querySelector('form[data-cform="'+keep.cf+'"] input'):keep.sf?document.querySelector('form[data-subform="'+keep.sf+'"] input'):null;
@@ -634,6 +635,7 @@ function render(){
   var sa=document.activeElement;if(UI.sheet&&!(sa&&sa.closest&&sa.closest('#sheet')&&(sa.tagName==='INPUT'||sa.tagName==='TEXTAREA')))renderSheet();
 }
 function bindMain(){
+  if(UI.view==='fridge'&&window.FRIDGE)window.FRIDGE.bindMain();
   var f=document.getElementById('quick');
   if(f){var qi=document.getElementById('qin');qi.addEventListener('input',function(){UI.quick=qi.value;});
     f.addEventListener('submit',async function(e){e.preventDefault();var v=qi.value.trim();if(!v)return;var p=parseQuick(v);if(!p.title){toast('Напиши, что нужно сделать');return;}
@@ -863,10 +865,12 @@ function renderSheet(first){
   else if(s.type==='list-edit'){title=s.id?'Список':'Новый список';body=listForm(s);foot='<button class="btn" data-a="saveList">'+(s.id?'Сохранить':'Создать список')+'</button>'+(s.id&&s.owner===ME?'<button class="btn2 warn" data-a="delList">Удалить список</button>':'')+(s.id&&s.owner!==ME?'<button class="btn2 warn" data-a="leaveList">Выйти из общего списка</button>':'');}
   else if(s.type==='note-share'){var nn=findNote(s.id);title='Поделиться заметкой';body='<div style="font-size:17px;font-weight:600">'+esc(nn&&nn.title||'Без названия')+'</div><div class="chips">'+others().map(function(p){var on=s.members.indexOf(p.id)>=0;return '<button class="chip'+(on?' on':'')+'" data-a="nmember" data-v="'+p.id+'">'+I('users')+esc(p.name||p.email)+'</button>';}).join('')+'</div><div class="gh">Отмеченные увидят заметку у себя в «Заметках» и смогут её дописывать. Удалить её сможешь только ты.</div>';foot='<button class="btn" data-a="saveNoteShare">Сохранить</button>';}
   else if(s.type==='pass'){title='Сменить пароль';body='<label><div class="gl">Новый пароль, минимум 8 символов</div><input class="fld" id="p1" type="password" autocomplete="new-password" minlength="8"></label><label><div class="gl">Ещё раз</div><input class="fld" id="p2" type="password" autocomplete="new-password" minlength="8"></label><div class="err" id="perr"></div>';foot='<button class="btn" data-a="passSave">Сохранить пароль</button>';}
+  else if(String(s.type).indexOf('fr-')===0){if(!window.FRIDGE){UI.sheet=null;return renderSheet();}var fs=window.FRIDGE.sheet(s);if(!fs){UI.sheet=null;return renderSheet();}title=fs.title;body=fs.body;foot=fs.foot||'';}
   else if(s.type==='settings'){title='Настройки';body=settingsForm();foot='<button class="btn2 warn" data-a="logout">'+I('out')+'Выйти из аккаунта</button>';}
   root.innerHTML='<div class="ov" data-a="ovClose"><div class="sh" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><div class="hd"><h3>'+esc(title)+'</h3><button class="iconbtn" data-a="close" aria-label="Закрыть">'+I('x')+'</button></div><div class="sb">'+body+'</div>'+(foot?'<div class="sf">'+foot+'</div>':'')+'</div></div>';
   root.querySelector('.sb').scrollTop=prev;
   bindSheet();bindDetailForms(root);
+  if(String(s.type).indexOf('fr-')===0&&window.FRIDGE)window.FRIDGE.bindSheet(root,first);
   if(first){var f=root.querySelector('#d-title,#d-name,#d-lname');if(f&&!s.id&&!f.value)setTimeout(function(){f.focus();},200);}
 }
 function detailHeadTitle(t){return t.done?'Выполнено':t.status==='pending'&&t.assignee===ME?'Прислали тебе':'Задача';}
@@ -1153,4 +1157,7 @@ sb.auth.onAuthStateChange(function(ev,session){
 applyTheme();
 start();
 window.__app={A:A,UI:UI,D:D,parseQuick:parseQuick,nextOcc:nextOcc};
+/* доступ для модуля «Холодильник» (fridge.js) — только чтение общих помощников, данные задач он не трогает */
+window.__core={sb:sb,get ME(){return ME;},UI:UI,A:A,I:I,esc:esc,toast:toast,err:err,q:q,T:T,addDays:addDays,diff:diff,dow:dow,fmt:fmt,fmtDM:fmtDM,fmtShort:fmtShort,fmtLong:fmtLong,dayWord:dayWord,pad:pad,plural:plural,cap:cap,render:render,renderSheet:renderSheet,closeSheet:closeSheet,prof:prof,pname:pname,others:others,isPC:isPC,micBtn:micBtn,uid:uid,nowHM:nowHM};
+if(window.FRIDGE_BOOT)window.FRIDGE_BOOT();
 })();
