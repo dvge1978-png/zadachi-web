@@ -223,6 +223,9 @@ async function patchTask(id,fields){
   catch(e){Object.assign(t,before);render();err(e);}
   return before;
 }
+/* день, в который засчитывается выполнение: день задачи (срок или дата создания), а не день, когда нажал «Выполнено» */
+function logDay(t){var td=T(),d=t.due_date||(t.created_at?keyOf(new Date(t.created_at)):td);return d&&d<td?d:td;}
+function logAt(l){var c=new Date(l.created_at),k=keyOf(c),tm=c.toTimeString().slice(0,5);return k===l.day?tm:'сделано '+fmtDM(k)+' в '+tm;}
 var CHEERS=['Готово','Отлично','Сделано','Так держать','Плюс одно дело'];
 async function completeTask(id){
   var t=findTask(id);if(!t)return;var before=Object.assign({},t);var fields;var msg;
@@ -230,7 +233,7 @@ async function completeTask(id){
   else{fields={done:true,done_at:new Date().toISOString(),done_by:ME};msg=SET.rewards?leftMsg(id):'Выполнено';}
   var logRow=null;
   patchTask(id,fields);
-  try{logRow=await q(sb.from('task_log').insert({task_id:t.id,list_id:t.list_id,title:t.title,day:T()}).select().single());D.log.unshift(logRow);render();}catch(e){err(e);}
+  try{logRow=await q(sb.from('task_log').insert({task_id:t.id,list_id:t.list_id,title:t.title,day:logDay(t)}).select().single());D.log.unshift(logRow);render();}catch(e){err(e);}
   toast((SET.rewards?CHEERS[Math.floor(Math.random()*CHEERS.length)]+'. ':'')+msg,function(){
     patchTask(id,{done:before.done,done_at:before.done_at,done_by:before.done_by,due_date:before.due_date,due_time:before.due_time,subs:before.subs});
     if(logRow){D.log=D.log.filter(function(l){return l.id!==logRow.id;});sb.from('task_log').delete().eq('id',logRow.id).then(function(){});}
@@ -463,7 +466,7 @@ function calView(){
     if(hs.length&&k<=t){h+=sec('Привычки','');hs.forEach(function(x){var on=hDone(x,k);h+='<div class="task"><button class="chk'+(on?' on':'')+'" data-a="habDay" data-id="'+x.id+'" data-v="'+k+'" aria-label="'+esc(x.name)+'"><span style="'+(on?'background:'+esc(x.color)+';border-color:'+esc(x.color):'')+'">'+(on?I('check'):'')+'</span></button><div class="tb"><span class="tt">'+esc(x.name)+'</span>'+(tgt(x)>1?'<span class="meta"><span>'+cnt(x,k)+' из '+tgt(x)+'</span></span>':'')+'</div></div>';});}
     var ts=tasksOn(k),lg=logOn(k);
     if(ts.length){h+=sec('Запланировано','');ts.forEach(function(x){h+=taskRow(x,k<t?'overdue':k===t?'today':'later');});}
-    if(lg.length){h+=sec('Сделано','');lg.forEach(function(l){h+='<div class="drow"><span class="b">'+I('check')+'</span>'+esc(l.title)+'<span class="at">'+new Date(l.created_at).toTimeString().slice(0,5)+'</span></div>';});}
+    if(lg.length){h+=sec('Сделано','');lg.forEach(function(l){h+='<div class="drow"><span class="b">'+I('check')+'</span>'+esc(l.title)+'<span class="at">'+logAt(l)+'</span></div>';});}
     if(!hs.length&&!ts.length&&!lg.length)h+='<div class="empty">На этот день ничего нет.</div>';
   }else if(mode==='week'){
     var m0=addDays(k,-dow(k));h+='<div class="wcols">';
@@ -486,7 +489,7 @@ function calView(){
 }
 function diaryView(){
   var days={};
-  D.log.filter(function(l){return l.user_id===ME;}).forEach(function(l){(days[l.day]=days[l.day]||[]).push({t:l.title,at:new Date(l.created_at).toTimeString().slice(0,5)});});
+  D.log.filter(function(l){return l.user_id===ME;}).forEach(function(l){(days[l.day]=days[l.day]||[]).push({t:l.title,at:logAt(l)});});
   D.habits.forEach(function(h){var m=D.marks[h.id]||{};Object.keys(m).forEach(function(d){if(m[d]>=tgt(h))(days[d]=days[d]||[]).push({t:h.name,at:'',c:h.color});});});
   var keys=Object.keys(days).sort().reverse();
   var h='<div class="top"><div><div class="date">'+fmtLong(T())+'</div><h1 class="dh">Дневник</h1></div></div>';
