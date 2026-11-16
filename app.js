@@ -132,7 +132,14 @@ function subscribe(){
     })
     .subscribe();
 }
-document.addEventListener('visibilitychange',function(){if(!document.hidden&&ME)reloadSoon();});
+/* свежая версия сайта: если на сервере новее, перезагружаемся сами (раз в 5 минут, не во время ввода) */
+var APP_V=(function(){var sc=[].slice.call(document.scripts).filter(function(x){return /app\.js\?v=/.test(x.src);})[0];return sc?(sc.src.match(/v=(\d+)/)||[])[1]||'':'';})();
+var verAt=0;
+function checkVersion(){if(!APP_V||Date.now()-verAt<300000)return;verAt=Date.now();
+  fetch('index.html?nc='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(h){var m=h.match(/app\.js\?v=(\d+)/);
+    if(m&&m[1]!==APP_V){var ae=document.activeElement;if(UI.sheet||UI.noteId||(ae&&/INPUT|TEXTAREA/.test(ae.tagName))){verAt=0;return;}location.reload();}}).catch(function(){});}
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&ME){reloadSoon();checkVersion();}});
+setTimeout(checkVersion,3000);
 
 /* =================== Настройки и тема =================== */
 var saveSetTimer=null;
@@ -284,7 +291,7 @@ function spChips(cur,key){if(!spOn())return '';return chips('Пространс�
 function spSettings(){
   var on=spOn(),h='<div class="rulebox"><div class="gl" style="margin:0;font-size:15px;color:var(--ink)">Пространства</div>';
   h+=chips('Разделить задачи на пространства',[['1','Включено'],['0','Выключено']],on?'1':'0','sp_on','Например, «Личное» и «Работа»: у каждого свои задачи, привычки, заметки, списки, календарь и дневник. Сверху появятся вкладки для переключения. Это только у тебя: у других людей ничего не меняется.');
-  if(on){h+='<div class="fields">'+spList().map(function(p,i){return '<div class="fr" style="gap:8px"><input class="fld" style="flex:1;min-width:0" data-sp="'+esc(p.id)+'" value="'+esc(p.name)+'" aria-label="Название пространства">'+(i===0?'<span class="badge">главное</span>':'<button class="iconbtn" data-a="spUp" data-v="'+esc(p.id)+'" aria-label="Сделать главным">'+I('star')+'</button><button class="iconbtn" data-a="spDel" data-v="'+esc(p.id)+'" aria-label="Удалить пространство">'+I('trash')+'</button>')+'</div>';}).join('')+'</div>';
+  if(on){h+='<div class="fields">'+spList().map(function(p,i){return '<div class="fr" style="gap:8px"><input class="fld" style="flex:1;min-width:0" data-sp="'+esc(p.id)+'" value="'+esc(p.name)+'" aria-label="Название пространства">'+(i===0?'<span class="badge" style="flex:none">главное</span>':'<button class="iconbtn" data-a="spUp" data-v="'+esc(p.id)+'" aria-label="Сделать главным">'+I('star')+'</button><button class="iconbtn" data-a="spDel" data-v="'+esc(p.id)+'" aria-label="Удалить пространство">'+I('trash')+'</button>')+'</div>';}).join('')+'</div>';
     h+='<form class="row2" id="spadd" autocomplete="off"><input class="fld" id="spnew" placeholder="Новое, например «Работа»" aria-label="Новое пространство" maxlength="30"><button class="btn2" type="submit">'+I('plus')+'Добавить</button></form>';
     h+='<div class="gh">В главное пространство попадает всё старое и всё, что ты не разложил. Переложить задачу, привычку, список или заметку можно в её настройках. Если положить в пространство список, туда же уйдут все его задачи.</div>';}
   return h+'</div>';
@@ -876,6 +883,7 @@ function settingsForm(){
   h+='<div><div class="gl">Задачи «каждый час» напоминают</div><div class="chips" style="align-items:center">с '+timeField('h_from',SET.hours.from,'09:00')+' до '+timeField('h_to',SET.hours.to,'21:00')+'</div></div>';
   h+='<div><div class="gl">Мои шаблоны</div>'+(D.templates.length?'<div class="chips">'+D.templates.map(function(x){return '<button class="chip" data-a="tplDel" data-id="'+x.id+'">'+esc(x.name)+' '+I('x')+'</button>';}).join('')+'</div>':'<div class="gh" style="margin:0">Создай задачу и нажми «Сохранить настройки как свой шаблон».</div>')+'</div>';
   h+='<div class="row2"><button class="btn2" data-a="lists">'+I('list')+'Управлять списками</button><button class="btn2" data-a="passOpen">'+I('gear')+'Сменить пароль</button></div>';
+  h+='<div class="gh">Версия приложения: '+esc(APP_V||'?')+'</div>';
   h+='<div class="gh">Установить на телефон: в Safari «Поделиться» → «На экран „Домой“», в Chrome меню ⋮ → «Добавить на главный экран».</div>';
   return h;
 }
