@@ -348,3 +348,8 @@ body.pc .composer{bottom:16px}
 .rcard ol{margin:6px 0 0;padding-left:20px;line-height:1.55;font-size:14px}
 .rcard ol li+li{margin-top:4px}
 .meta .ok{color:var(--ok);font-weight:500}
+/* пространства: вкладки сверху */
+.sptabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border:1px solid var(--line);border-radius:22px;padding:3px;margin:0 0 14px;width:max-content;max-width:100%}
+.sptabs::-webkit-scrollbar{display:none}
+.sptabs button{flex-shrink:0;height:34px;padding:0 16px;border-radius:17px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.sptabs button.on{background:var(--ink);color:var(--bg)}
