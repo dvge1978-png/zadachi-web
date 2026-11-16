@@ -270,7 +270,7 @@ function myTasks(){return D.tasks.filter(function(t){return mineVisible(t)&&inSp
 /* =================== Пространства (личная раскладка: «Личное», «Работа» …) =================== */
 function spList(){var sp=SET.spaces;return sp&&sp.list&&sp.list.length?sp.list:[];}
 function spOn(){return !!(SET.spaces&&SET.spaces.on&&spList().length);}
-function spDef(){return spList()[0].id;}
+function spDef(){var l=spList();return l.length?l[0].id:null;}
 function spName(id){var x=spList().filter(function(p){return p.id===id;})[0];return x?x.name:'';}
 function spValid(id){return spList().some(function(p){return p.id===id;});}
 function spKey(){return 'zadachi-space-'+ME;}
@@ -278,7 +278,7 @@ function spCur(){if(!spOn())return 'all';var v=UI.space;if(v==null){try{v=localS
 function spRaw(kind,id){var v=D.sitems[kind+':'+id];return v&&spValid(v)?v:null;}
 function spOf(kind,x){if(!spOn()||!x)return null;var v=spRaw(kind,x.id);if(v)return v;if(kind==='task'&&x.list_id){v=spRaw('list',x.list_id);if(v)return v;}return spDef();}
 function inSp(kind,x){var c=spCur();return c==='all'||spOf(kind,x)===c;}
-function spNew(){var c=spCur();return c==='all'?spDef():c;}
+function spNew(){if(!spOn())return null;var c=spCur();return c==='all'?spDef():c;}
 async function setSp(kind,id,space){if(!spOn()||!id||!space)return;D.sitems[kind+':'+id]=space;
   try{await q(sb.from('space_items').upsert({user_id:ME,kind:kind,item_id:id,space:space,updated_at:new Date().toISOString()},{onConflict:'user_id,kind,item_id'}));}catch(e){err(e);}}
 function logSp(l){var t=findTask(l.task_id);if(t)return spOf('task',t);if(l.list_id){var v=spRaw('list',l.list_id);if(v)return v;}return spOn()?spDef():null;}
